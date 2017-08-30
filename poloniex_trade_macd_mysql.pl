@@ -223,7 +223,7 @@ foreach ( sort (keys %macd_delta5_list))
 		my $elem = $_;
 		foreach (keys $elem)
 		{
-			print "elem $key $_ $elem{$_}\n";
+			print "elem $key $_ $elem->{$_}{'26'}\n";
 		}
 	}
 }
