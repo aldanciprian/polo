@@ -402,8 +402,9 @@ while (1)
 				close $fh;				
 				
 			}
+			$runOnce_5 = 1;
 		}
-		$runOnce_5 = 1;
+
 	}
 	else
 	{
@@ -511,8 +512,8 @@ while (1)
 				close $fh;					
 				
 			}
+			$runOnce_30 = 1;
 		}
-		$runOnce_30 = 1;
 	}
 	else
 	{
@@ -1469,6 +1470,7 @@ sub update_macd_12_26_9()
 	my $output_hash = shift;
 	my $ticker = shift;
 	
+	print $#{$output_hash->{$ticker}}."\n"; 
 	my $output_array_size = @{$output_hash->{$ticker}};
 	print "size of output $ticker array is $output_array_size \n";
 	my $crt_tstmp =  get_tstmp($array->[$array_size - 1]);
