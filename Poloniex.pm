@@ -118,7 +118,7 @@ sub get_volume() {
 sub get_trading_pairs() {
  $self = shift;
  $tickers = $self->retrieveJSON($self->{public_url} . '?command=returnTicker');
- return keys($tickers);
+ return keys(%{$tickers});
 }
 
 
