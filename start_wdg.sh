@@ -24,10 +24,10 @@ trap ctrl_c INT
 
 while [ 1 ]
 do
-	echo "============GENESIS polo $0 $$============"
+	echo "============GENESIS polo $0  $$============"
 	date
 	cd $BASE/
-	./manage_get_data.sh
+	./wdg_get_data.pl
 
 	sleep 10s
 done
