@@ -101,7 +101,7 @@ my $dbh = DBI->connect("DBI:mysql:database=$database;host=$hostname","ciprian", 
 while (1)
 {
 	my $execute_crt_tstmp = timestamp();
-	print "============================= poloniex trade $execute_crt_tstmp  $$ ======================\n";	
+	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";	
 	# watchdog
 	my $filename_wdg = 'wdg_get_data.txt';
 	open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
@@ -191,7 +191,7 @@ sub get_pair_list {
 		{
 			# only trade against BTC
 			my $coinName = $1;
-			
+
 			my $percentChange   = ${decoded_json}->{$_}->{'percentChange'};
 			my $low24hr   = ${decoded_json}->{$_}->{'low24hr'};
 			my $last   = ${decoded_json}->{$_}->{'last'};
@@ -202,11 +202,11 @@ sub get_pair_list {
 			my $id   = ${decoded_json}->{$_}->{'id'};
 			my $highestBid   = ${decoded_json}->{$_}->{'highestBid'};
 			my $isFrozen   = ${decoded_json}->{$_}->{'isFrozen'};		
-			
+
 			if ( $isFrozen == 0 )
 			{
 				#only unfrozen pairs					
-				if ( $baseVolume > $volumeRef)
+				# if ( $baseVolume > $volumeRef)
 				{
 					# only higher then a threshold
 					if ( $last > 0.00001000 )
@@ -224,6 +224,7 @@ sub get_pair_list {
 						# push @elem $id;
 						# push @elem $highestBid;
 						# push @elem $isFrozen;
+						# print " coin name is $coinName \n";
 						add_data($coinName,"\'".tstmp2db($tstmp)."\', $percentChange, $low24hr, $last, $high24hr, $lowestAsk, $quoteVolume, $baseVolume, $id, $highestBid, $isFrozen");						
 						# print $filename_samplings_all_h "$tstmp $coinName $percentChange $low24hr $last $high24hr $lowestAsk $quoteVolume $baseVolume $id $highestBid $isFrozen \n";
 						# push @current_list, %elem_hash;				

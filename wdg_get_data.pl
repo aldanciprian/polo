@@ -4,6 +4,7 @@ use strict;                     # Good practice
 use warnings;                   # Good practice
 use Time::localtime;
 use Time::Piece;
+use File::Basename;
 
 
 my $sleep_intv = 10;
@@ -27,7 +28,7 @@ while (1)
 
 
 	my $delta = $crtTime - $lastTime;
-	print "[$crt_time] - [$last_line] $delta \n";
+	print basename($0,".pl")." [$crt_time] - [$last_line] $delta \n";
 
 	if ( ($crtTime - $lastTime) > 60 )
 	{
