@@ -32,7 +32,7 @@ my $crt_tstmp = 0; # the tstmp of the current order
 my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
-my $btc_balance = 0.001; # the ammount in BTC
+my $btc_balance = 0.00075; # the ammount in BTC
 my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
 my $wining_procent = 1.1; # the procent where we sell
@@ -339,10 +339,19 @@ my $runOnce_5 = 0;
 my $runOnce_30 = 0;
 while (1)
 {
+	my $buy_next = "WRONG";
 	my $execute_crt_tstmp = timestamp();
 
 	# test();
 	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";		
+
+	
+	# watchdog
+	my $filename_wdg = basename($0,".pl")."_wdg.txt";
+	open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
+	print $fh_wdg "$execute_crt_tstmp\n";
+	close $fh_wdg;		
+	
 	
 	my $crtTime =   Time::Piece->strptime($execute_crt_tstmp,'%Y-%m-%d_%H-%M-%S');	
 
@@ -370,57 +379,61 @@ while (1)
 				my $key = $_;			
 				update_samples($_,5,$endTfTime5,\%delta5_list);
 				
-				#get a 1 day delta trend
-				get_samples_days($_,1,$endTfTime5,\%delta_1d_list);					
-				
-				# print Dumper %delta5_list;
-				my $size = @{$delta5_list{$key}};
-				# print "$key sample list size is $size \n";
-				if ( $size > 26 )
+				if ( defined $delta5_list{$key} )
 				{
-					update_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);		
-				}
-				else
-				{
-
-					if ( defined $macd_delta5_list{$key} )
+					#get a 1 day delta trend
+					get_samples_days($_,1,$endTfTime5,\%delta_1d_list);					
+					
+					# print Dumper %delta5_list;
+					my $size = @{$delta5_list{$key}};
+					# print "$key sample list size is $size \n";
+					if ( $size > 26 )
 					{
-					#clear the array
-					@{$macd_delta5_list{$key}}=(); 
+						update_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);		
 					}
-					calculate_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);				
-				}
-
-				
-				my $filename = "macd/".$key."_macd_5min.txt";
-				open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-				#dump file
-				foreach (@{$macd_delta5_list{$key}})
-				{
-					my $elem = $_;
-					foreach (keys %{$elem})
+					else
 					{
-						print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-						print $fh print_number($elem->{$_}{'12'})." ";
-						print $fh print_number($elem->{$_}{'26'})." ";
-						print $fh print_number($elem->{$_}{'macd'})." ";
-						print $fh print_number($elem->{$_}{'9'})."\n";
-					}
-				}
-				close $fh;				
-				
-				$filename = "macd/".$key."_samples_1day.txt";
-				open($fh, '>', $filename) or die "Could not open file '$filename' $!";
 
-				#dump file
-				foreach (@{$delta_1d_list{$key}})
-				{
-					print $fh get_tstmp($_)." ".get_last($_)."\n";
+						if ( defined $macd_delta5_list{$key} )
+						{
+						#clear the array
+						@{$macd_delta5_list{$key}}=(); 
+						}
+						calculate_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);				
+					}
+		
+					
+					my $filename = "macd/".$key."_macd_5min.txt";
+					open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+
+					#dump file
+					foreach (@{$macd_delta5_list{$key}})
+					{
+						my $elem = $_;
+						foreach (keys %{$elem})
+						{
+							print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
+							print $fh print_number($elem->{$_}{'12'})." ";
+							print $fh print_number($elem->{$_}{'26'})." ";
+							print $fh print_number($elem->{$_}{'macd'})." ";
+							print $fh print_number($elem->{$_}{'9'})."\n";
+						}
+					}
+					close $fh;				
+					
+					$filename = "macd/".$key."_samples_1day.txt";
+					open($fh, '>', $filename) or die "Could not open file '$filename' $!";
+
+					#dump file
+					if ( defined $delta_1d_list{$key} )
+					{
+						foreach (@{$delta_1d_list{$key}})
+						{
+							print $fh get_tstmp($_)." ".get_last($_)."\n";
+						}
+					}
+					close $fh;				
 				}
-				close $fh;				
-				
-				
 			}
 		}
 	}
@@ -450,51 +463,136 @@ while (1)
 			$runOnce_30 = 1;			
 			foreach (sort @symbols_list)
 			{
-				my $key = $_;			
+				my $key = $_;		
+				my $good_ticker = 1;
 				update_samples($_,30,$endTfTime30,\%delta30_list);
-				# print Dumper %delta30_list;
-				my $size = @{$delta30_list{$key}};
-				# print "$key sample list size is $size \n";
-				if ( $size > 26 )
+				if ( defined $delta30_list{$key} )	
 				{
-					update_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);		
-				}
-				else
-				{
+					# print Dumper %delta30_list;
+					my $size = @{$delta30_list{$key}};
+					# print "$key sample list size is $size \n";
+					if ( $size > 26 )
+					{
+						update_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);		
+					}
+					else
+					{
+						foreach (@{$macd_delta30_list{$key}})
+						{
+							shift @{$macd_delta30_list{$key}};
+						}
+						
+						if ( defined $macd_delta30_list{$key} )
+						{
+						#clear the array
+						@{$macd_delta30_list{$key}}=(); 
+						}
+						calculate_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);				
+					}
+
+					
+					my $filename = "macd/".$key."_macd_30min.txt";
+					open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+
+					#dump file
 					foreach (@{$macd_delta30_list{$key}})
 					{
-						shift @{$macd_delta30_list{$key}};
+						my $elem = $_;
+						foreach (keys %{$elem})
+						{
+							print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
+							print $fh print_number($elem->{$_}{'12'})." ";
+							print $fh print_number($elem->{$_}{'26'})." ";
+							print $fh print_number($elem->{$_}{'macd'})." ";
+							print $fh print_number($elem->{$_}{'9'})."\n";
+						}
 					}
-					
-					if ( defined $macd_delta30_list{$key} )
-					{
-					#clear the array
-					@{$macd_delta30_list{$key}}=(); 
-					}
-					
-					
-					calculate_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);				
-				}
+					close $fh;		
 
-				
-				my $filename = "macd/".$key."_macd_30min.txt";
-				open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-				#dump file
-				foreach (@{$macd_delta30_list{$key}})
-				{
-					my $elem = $_;
-					foreach (keys %{$elem})
+					if ( defined $delta_1d_list{$key} )
 					{
-						print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-						print $fh print_number($elem->{$_}{'12'})." ";
-						print $fh print_number($elem->{$_}{'26'})." ";
-						print $fh print_number($elem->{$_}{'macd'})." ";
-						print $fh print_number($elem->{$_}{'9'})."\n";
+						my $previous_avg = 0;						
+						my $average_price = 0;
+						my $crt_counter = 0;
+						my $previous_date = "";
+						foreach (@{$delta_1d_list{$key}})
+						{
+							my $elem = $_;
+							my $temp_tp = get_tstmp($elem);
+							my $temp_price = get_last($elem);
+							print "$key Before time $temp_tp \n";
+							my $tempTime = Time::Piece->strptime($temp_tp,'%Y-%m-%d_%H-%M-%S');
+							my $temp_date = $tempTime->strftime("%F");
+							print "$key After time $temp_tp \n";
+							if ( $previous_date ne $temp_date )
+							{
+								my $old_previous = $previous_avg;
+								if ( $crt_counter != 0 )
+								{
+									$previous_avg  = $average_price % $crt_counter;								
+								}
+								else
+								{
+									$previous_avg = $average_price;
+								}
+								
+								print "$key Avarage trend old $old_previous new $previous_avg \n";
+								if ( $old_previous != 0)
+								{
+									if ( $old_previous < $previous_avg)
+									{
+										#this is not a good ticker
+										$good_ticker = 0;
+										last;
+									}
+								}
+
+								$average_price = 0;
+								$crt_counter = 0;
+								
+								
+								$average_price = $temp_price;
+								$crt_counter++;
+							}
+							else
+							{
+								$average_price += $temp_price;
+								$crt_counter++;
+							}
+						}
+					}
+					
+					# here we make the decision
+					if ( $good_ticker == 1 )
+					{
+						my ($previous_decision_key) = keys %{$macd_delta30_list{$key}[-2]};					
+						my $previous_macd = $macd_delta30_list{$key}[-2]{$previous_decision_key}{'macd'};						
+						my $previous_9ema = $macd_delta30_list{$key}[-2]{$previous_decision_key}{'9'};												
+						my ($current_decision_key) = keys %{$macd_delta30_list{$key}[-1]};					
+						my $current_macd = $macd_delta30_list{$key}[-1]{$previous_decision_key}{'macd'};						
+						my $current_9ema = $macd_delta30_list{$key}[-1]{$previous_decision_key}{'9'};												
+						
+						if ( $previous_macd < $previous_9ema )
+						{
+							my $previous_delta = ($previous_9ema - $previous_macd) * 100 / $previous_macd;
+							if ( $current_macd > $current_9ema )
+							{
+								# this is a good to buy ticker
+								my $current_delta = ($current_macd - $current_9ema) * 100 / $current_9ema;
+								$buy_next =  $key;
+								print "The ticker to buy is $key $previous_delta $current_delta \n";
+							}
+							else
+							{
+								print "Not a cross $key $previous_macd $previous_9ema $current_macd $current_9ema \n";
+							}
+						}
+					} # good ticker
+					else
+					{
+						print "No good trend for $key \n";
 					}
 				}
-				close $fh;				
-				
 			}
 		}
 	}
@@ -503,72 +601,11 @@ while (1)
 		$runOnce_30 = 0;
 	}	
 
-	
-
-	sleep $sleep_interval;
-	next;	
-	
 	my %current_list;
-	
-	
-	# watchdog
-	my $filename_wdg = 'poloniex_trade_macd_mysql.txt';
-	open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
-	print $fh_wdg "$execute_crt_tstmp\n";
-	close $fh_wdg;	
-	
-	my $buy_next = "WRONG";
-
-	
-
 	#do the sampling
 	%current_list = get_pair_list();
 	
-	# print Dumper \%current_list;
 	
-	
-	##alina timeDiff
-	my $crtTime =   Time::Piece->strptime($execute_crt_tstmp,'%Y-%m-%d_%H-%M-%S');	
-	my $minute = 0;
-	my $reminder = 0;
-	my $endMinute	= 0;
-	my $endTfTime = 0;
-	{
-	  use integer;
-	  $minute = $crtTime->strftime("%M");
-	  $reminder = $minute % $sample_minutes;
-	  $reminder = $sample_minutes - $reminder;
-	  $minute += $reminder;
-	  if ( $minute == 60 )
-	  {
-		$minute = 59;
-		$endMinute = sprintf("%02s",$minute);
-		$endTfTime = $crtTime->strftime("%Y-%m-%d_%H-$endMinute-59");
-	  }
-		else
-		{
-		$endMinute = sprintf("%02s",$minute);
-		$endTfTime = $crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-		}
-	}
-	$endTfTime = Time::Piece->strptime($endTfTime,'%Y-%m-%d_%H-%M-%S');	
-	
-	print "$execute_crt_tstmp $endTfTime ".( $endTfTime - $crtTime )."\n";
-	if  (( ( $endTfTime - $crtTime ) < 25 ) && ( $runOnce == 0 ) )
-	{
-		print "the end of the timeslot is near \n";
-		print " =========  get next buy ticker ".timestamp()." \n";
-		$buy_next = get_next_buy_ticker($crt_pair,\%current_list);
-		print " =========  end get next buy ticker ".timestamp()." \n";	
-		$runOnce = 1;
-	}
-	
-	if  ( ( $endTfTime - $crtTime ) > 50 )	
-	{
-		$runOnce = 0;
-	}
-
-
 	
 	# sleep $sleep_interval;	
 	# next;
@@ -788,7 +825,37 @@ while (1)
 						my $delta = $crt_price - $latest_price;
 						my $procent = (100 * $delta) / $crt_price;
 						print "price smaller then bought price $sell_ticker $latest_price  $crt_price -$procent  \n";						
-						$sleep_interval = $step_wait_selling;					
+						$sleep_interval = $step_wait_selling;		
+
+						# force the sell 
+						if ( $delta > 5 )
+						{
+							print "WE FORCE THE SELL because delta is -$delta % !!\n";
+
+							if ( $latest_price > 0.00001000 )
+							{
+
+								$latest_price = $latest_price + 0.00000010;								
+							}
+							else
+							{
+								# just decrease with the small resolution
+								$latest_price = $latest_price + 0.00000001;							
+							}
+
+							$decoded_json = $polo_wrapper->sell("BTC_$sell_ticker",$latest_price,$crt_ammount);
+							$crt_order_number = $decoded_json->{'orderNumber'};
+							# print Dumper $decoded_json;
+							my $btc_after_sell = $latest_price * $crt_ammount;
+							$btc_after_sell = $btc_after_sell - ( $btc_after_sell * 0.0015 );
+							print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
+							print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+							close $filename_status_h;					
+						}
+						
+						$sleep_interval = $step_wait_execute;		
+						
 					}
 					
 					#case 2
@@ -1442,7 +1509,7 @@ sub get_samples_days()
 		$found_tstmp = 0;	
 		$sample_tstmp = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');
 		# search only between the end of the TF and 60 seconds before
-		$minim_TfTime = $sample_tstmpTime - 6000;
+		$minim_TfTime = $sample_tstmpTime - 21600;
 		$minim_sample_tstmp = $minim_TfTime->strftime('%Y-%m-%d_%H-%M-%S');
 		# print "select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1 \n";
 		$sth = $dbh->prepare("select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1");
@@ -1468,7 +1535,7 @@ sub get_samples_days()
 
 		}
 		$sth->finish();				
-		$sample_tstmpTime	= $sample_tstmpTime - ($delta*86400);
+		$sample_tstmpTime	= $sample_tstmpTime - ($delta*43200);
 	
 	
 	} while ($found_tstmp == 1)
