@@ -381,8 +381,7 @@ while (1)
 				
 				if ( defined $delta5_list{$key} )
 				{
-					#get a 1 day delta trend
-					get_samples_days($_,1,$endTfTime5,\%delta_1d_list);					
+		
 					
 					# print Dumper %delta5_list;
 					my $size = @{$delta5_list{$key}};
@@ -466,6 +465,10 @@ while (1)
 				my $key = $_;		
 				my $good_ticker = 1;
 				update_samples($_,30,$endTfTime30,\%delta30_list);
+				
+				#get a 1 day delta trend
+				get_samples_days($_,1,$endTfTime5,\%delta_1d_list);							
+				
 				if ( defined $delta30_list{$key} )	
 				{
 					# print Dumper %delta30_list;
@@ -515,15 +518,17 @@ while (1)
 						my $average_price = 0;
 						my $crt_counter = 0;
 						my $previous_date = "";
+						# print "$key size of delta_1d_list is ".@{$delta_1d_list{$key}}." \n";
 						foreach (@{$delta_1d_list{$key}})
 						{
 							my $elem = $_;
 							my $temp_tp = get_tstmp($elem);
 							my $temp_price = get_last($elem);
-							print "$key Before time $temp_tp \n";
-							my $tempTime = Time::Piece->strptime($temp_tp,'%Y-%m-%d_%H-%M-%S');
+							# print "$key Before time [$temp_tp] \n";
+							my $tempTime = Time::Piece->strptime($temp_tp,'%Y-%m-%d_%H-%M-%S');								
+							# print "$key After strptime $temp_tp \n";
 							my $temp_date = $tempTime->strftime("%F");
-							print "$key After time $temp_tp \n";
+							# print "$key After time $temp_tp \n";
 							if ( $previous_date ne $temp_date )
 							{
 								my $old_previous = $previous_avg;
@@ -535,7 +540,7 @@ while (1)
 								{
 									$previous_avg = $average_price;
 								}
-								
+								$previous_date = $temp_date;
 								print "$key Avarage trend old $old_previous new $previous_avg \n";
 								if ( $old_previous != 0)
 								{
@@ -1254,6 +1259,7 @@ sub get_samples()
 			my $temp_tstmp =  $ref->{'tstmp'};
 			# $temp_tstmp = db2tstmp($temp_tstmp);
 			$temp_tstmp =~ s/ /_/g;
+			$temp_tstmp =~ s/:/-/g;
 			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
 			my $array_size = @{$output_hash->{$ticker}};
 			if ( $array_size > 300 )
@@ -1302,6 +1308,7 @@ sub update_samples()
 		my $temp_tstmp =  $ref->{'tstmp'};
 		# $temp_tstmp = db2tstmp($temp_tstmp);
 		$temp_tstmp =~ s/ /_/g;
+		$temp_tstmp =~ s/:/-/g;		
 		$found = 1;
 		if ( $temp_tstmp ne get_tstmp(${$output_hash->{$ticker}}[0]) )
 		{
@@ -1519,6 +1526,8 @@ sub get_samples_days()
 			my $temp_tstmp =  $ref->{'tstmp'};
 			# $temp_tstmp = db2tstmp($temp_tstmp);
 			$temp_tstmp =~ s/ /_/g;
+			$temp_tstmp =~ s/:/-/g;
+
 			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
 			my $array_size = @{$output_hash->{$ticker}};
 			if ( $array_size > 20 )
