@@ -32,7 +32,7 @@ my $crt_tstmp = 0; # the tstmp of the current order
 my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
-my $btc_balance = 0.00075; # the ammount in BTC
+my $btc_balance = 0.0007; # the ammount in BTC
 my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
 my $wining_procent = 1.1; # the procent where we sell
@@ -66,13 +66,19 @@ my $loosingProcent = 20; #the loss limit
 my $volumeRef = 70; # only pairs with more then x coin volume
 
 my $buy_timeout = 0; #if it doesn't buy...cancel the order
-my $runOnce = 0;
-my $runOnce_3day = 0;
+
+my $incline_treshold = 15; # procent where macd goes over signal and up
+
 # BUYING 1
 # BOUGHT 2
 # SELLING 3
 # SOLD 4
 
+
+my $sample_space = $ARGV[0]; #minutes between samples
+my $first_ema = $ARGV[1]; #1ema size
+my $second_ema = $ARGV[2]; #2ema size
+my $signal = $ARGV[3]; #signal size
 
 
 sub get_json;
@@ -85,8 +91,8 @@ sub get_samples;
 sub get_samples_days;
 sub update_samples;
 sub db2tstmp;
-sub calculate_macd_12_26_9;
-sub update_macd_12_26_9;
+sub calculate_macd_generic;
+sub update_macd_generic;
 sub trim_list;
 sub print_number;
 
@@ -102,13 +108,10 @@ sub get_id;
 sub get_highestBid;
 sub get_isFrozen;
 
-my %delta5_list;
-my %macd_delta5_list;
-my %delta15_list;
-my %macd_delta15_list;
-my %delta30_list;
+my %delta_generic_list;
+my %macd_delta_generic_list;
 my %delta_1d_list;
-my %macd_delta30_list;
+
 
 my @symbols_list;
 	
@@ -132,217 +135,93 @@ $sth->finish();
 my $minute = 0;
 my $reminder = 0;
 my $endMinute	= 0;
-my $endTfTime5 = 0;
-my $endTfTime15 = 0;
-my $endTfTime30 = 0;
+my $endTfTimeGeneric= 0;
 
+# watchdog
+my $filename_wdg = basename($0,".pl")."_wdg.txt";
+open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
+print $fh_wdg timestamp()."\n";
+close $fh_wdg;		
 
 #get the time now
 my $script_start_time = timestamp();
 my $start_crtTime =   Time::Piece->strptime($script_start_time,'%Y-%m-%d_%H-%M-%S');	
 
-#populate the 5min distance list
 {
 	use integer;
 	$minute = $start_crtTime->strftime("%M");
-	$reminder = $minute % 5;
+	$reminder = $minute % $sample_space;
 	$minute = $minute - $reminder;
 
 	$endMinute = sprintf("%02s",$minute);
-	$endTfTime5 = $start_crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-	$endTfTime5 = Time::Piece->strptime($endTfTime5,'%Y-%m-%d_%H-%M-%S');
+	$endTfTimeGeneric = $start_crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
+	$endTfTimeGeneric = Time::Piece->strptime($endTfTimeGeneric,'%Y-%m-%d_%H-%M-%S');
 }
-# print "$script_start_time $endTfTime5 \n";
-
-
-#populate the 15min distance list
-# {
-	# use integer;
-	# $minute = $start_crtTime->strftime("%M");
-	# $reminder = $minute % 15;
-	# $minute = $minute - $reminder;
-
-	# $endMinute = sprintf("%02s",$minute);
-	# $endTfTime15 = $start_crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-	# $endTfTime15 = Time::Piece->strptime($endTfTime15,'%Y-%m-%d_%H-%M-%S');
-# }
-# print "$script_start_time $endTfTime15 \n";
-#populate the 30min distance list
-{
-	use integer;
-	$minute = $start_crtTime->strftime("%M");
-	$reminder = $minute % 30;
-	$minute = $minute - $reminder;
-
-	$endMinute = sprintf("%02s",$minute);
-	$endTfTime30 = $start_crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-	$endTfTime30 = Time::Piece->strptime($endTfTime30,'%Y-%m-%d_%H-%M-%S');
-}
-# print "$script_start_time $endTfTime30 \n";
-
-
-
 
 print "=========  initialize samples ".timestamp()." \n";	
 foreach (@symbols_list)
 {
-	get_samples($_,5,$endTfTime5,\%delta5_list);
-	# get_samples($_,15,$endTfTime15,\%delta15_list);	
-	get_samples($_,30,$endTfTime30,\%delta30_list);	
-	
-	
-	#get a 1 day delta trend
-	get_samples_days($_,1,$endTfTime5,\%delta_1d_list);	
+	get_samples($_,$sample_space,$endTfTimeGeneric,\%delta_generic_list);	
 }
 print "=========  end initialize samples ".timestamp()." \n";	
 
 
 # set lists to a specific maximum size
-trim_list(\%delta5_list,300);
-# trim_list(\%delta15_list,300);
-trim_list(\%delta30_list,300);
-foreach (sort (keys(%delta5_list)) )
+trim_list(\%delta_generic_list,400);
+
+foreach (sort (keys(%delta_generic_list)) )
 {
-		my $key = $_;
-		my $size = @{$delta5_list{$key}};
-		calculate_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);
-}
-# foreach (sort (keys(%delta15_list)) )
-# {
-		# my $key = $_;
-		# my $size = @{$delta15_list{$key}};
-		# calculate_macd_12_26_9(\@{$delta15_list{$key}},$size,\%macd_delta15_list,$key);
-# }
-foreach (sort (keys(%delta30_list)) )
-{
-		my $key = $_;
-		my $size = @{$delta30_list{$key}};
-		calculate_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);
+	my $key = $_;
+	my $filename = "macd/".$key."_samples_generic_min.txt";
+	open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+
+	foreach (@{$delta_generic_list{$key}})
+	{
+		print $fh "$_ \n";		
+	}
+	close $fh;		
 }
 
-# print Dumper %macd_delta5_list;
-# exit 0;
-# foreach ( sort (keys %macd_delta5_list))
-# {
-	# my $key = $_;
-	# # print ref ($macd_delta5_list{$key});
-	# my $filename = "macd/".$key."_macd_5min.txt";
-	# open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-	
-	# foreach (@{$macd_delta5_list{$key}})
-	# {
-		# my $elem = $_;
-		# foreach (keys $elem)
-		# {
-			# print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-			# print $fh print_number($elem->{$_}{'12'})." ";
-			# print $fh print_number($elem->{$_}{'26'})." ";
-			# print $fh print_number($elem->{$_}{'macd'})." ";
-			# print $fh print_number($elem->{$_}{'9'})."\n";
-		# }
-	# }
-	
-	# close $fh;
-# }
+foreach (sort (keys(%delta_generic_list)) )
+{
+		my $key = $_;
+		my $size = @{$delta_generic_list{$key}};
+		calculate_macd_generic(\@{$delta_generic_list{$key}},$size,\%macd_delta_generic_list,$key);
+}
 
-# foreach ( sort (keys %macd_delta15_list))
-# {
-	# my $key = $_;
-	# # print ref ($macd_delta15_list{$key});
-	# my $filename = "macd/".$key."_macd_15min.txt";
-	# open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+foreach ( sort (keys %macd_delta_generic_list))
+{
+	my $key = $_;
+	# print ref ($macd_delta_generic_list{$key});
+	my $filename = "macd/".$key."_macd_generic.txt";
+	open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
 	
-	# foreach (@{$macd_delta15_list{$key}})
-	# {
-		# my $elem = $_;
-		# foreach (keys $elem)
-		# {
-			# print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-			# print $fh print_number($elem->{$_}{'12'})." ";
-			# print $fh print_number($elem->{$_}{'26'})." ";
-			# print $fh print_number($elem->{$_}{'macd'})." ";
-			# print $fh print_number($elem->{$_}{'9'})."\n";
-		# }
-	# }
+	foreach (@{$macd_delta_generic_list{$key}})
+	{
+		my $elem = $_;
+		foreach (keys %{$elem})
+		{
+			print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
+			print $fh print_number($elem->{$_}{'1'})." ";
+			print $fh print_number($elem->{$_}{'2'})." ";
+			print $fh print_number($elem->{$_}{'macd'})." ";
+			print $fh print_number($elem->{$_}{'signal'})."\n";
+		}
+	}
 	
-	# close $fh;
-# }
-
-# foreach ( sort (keys %macd_delta30_list))
-# {
-	# my $key = $_;
-	# # print ref ($macd_delta30_list{$key});
-	# my $filename = "macd/".$key."_macd_30min.txt";
-	# open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-	
-	# foreach (@{$macd_delta30_list{$key}})
-	# {
-		# my $elem = $_;
-		# foreach (keys $elem)
-		# {
-			# print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-			# print $fh print_number($elem->{$_}{'12'})." ";
-			# print $fh print_number($elem->{$_}{'26'})." ";
-			# print $fh print_number($elem->{$_}{'macd'})." ";
-			# print $fh print_number($elem->{$_}{'9'})."\n";
-		# }
-	# }
-	
-	# close $fh;
-# }
-# exit 0;
-# foreach (sort (keys(%delta5_list)) )
-# {
-	# my $key = $_;
-	# my $filename = "macd/".$key."_samples_5min.txt";
-	# open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-	# foreach (@{$delta5_list{$key}})
-	# {
-		# print $fh "$_ \n";		
-	# }
-	# close $fh;		
-# }
-# foreach (sort (keys(%delta15_list)) )
-# {
-	# my $key = $_;
-	# my $filename = "macd/".$key."_samples_15min.txt";
-	# open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-	
-	# foreach (@{$delta15_list{$key}})
-	# {
-		# print $fh "$_ \n";				
-	# }
-	# close $fh;			
-# }
-
-# foreach (sort (keys(%delta30_list)) )
-# {
-	# my $key = $_;
-	# my $filename = "macd/".$key."_samples_30min.txt";
-	# open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-	
-	# foreach (@{$delta30_list{$key}})
-	# {
-		# print $fh "$_ \n";			
-	# }
-	
-	# close $fh;			
-# }
+	close $fh;
+}
 
 
-
-# get_json_post();
 my $polo_wrapper = Poloniex->new($apikey,$sign);
 
-my $runOnce_5 = 0;
-my $runOnce_30 = 0;
+my $runOnce = 0;
+
 while (1)
 {
 	my $buy_next = "WRONG";
 	my $execute_crt_tstmp = timestamp();
 
-	# test();
 	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";		
 
 	
@@ -355,247 +234,179 @@ while (1)
 	
 	my $crtTime =   Time::Piece->strptime($execute_crt_tstmp,'%Y-%m-%d_%H-%M-%S');	
 
-	#populate the 5min distance list
+	#populate the generic distance list
 
 	{
 		use integer;
 		$minute = $crtTime->strftime("%M");
-		$reminder = $minute % 5;
+		$reminder = $minute % $sample_space;
 		$minute = $minute - $reminder;
 
 		$endMinute = sprintf("%02s",$minute);
-		$endTfTime5 = $crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-		$endTfTime5 = Time::Piece->strptime($endTfTime5,'%Y-%m-%d_%H-%M-%S');
+		$endTfTimeGeneric = $crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
+		$endTfTimeGeneric = Time::Piece->strptime($endTfTimeGeneric,'%Y-%m-%d_%H-%M-%S');
 	}	
-	
-	if  ( ( $crtTime - $endTfTime5 ) < 60 )
+
+	if  ( ( $crtTime - $endTfTimeGeneric ) < 60 )
 	{
-		if ( $runOnce_5 == 0 )
+		if ( $runOnce == 0 )
 		{
-			print "update 5 min \n";
-			$runOnce_5 = 1;			
-			foreach (sort @symbols_list)
-			{
-				my $key = $_;			
-				update_samples($_,5,$endTfTime5,\%delta5_list);
-				
-				if ( defined $delta5_list{$key} )
-				{
-		
-					
-					# print Dumper %delta5_list;
-					my $size = @{$delta5_list{$key}};
-					# print "$key sample list size is $size \n";
-					if ( $size > 26 )
-					{
-						update_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);		
-					}
-					else
-					{
-
-						if ( defined $macd_delta5_list{$key} )
-						{
-						#clear the array
-						@{$macd_delta5_list{$key}}=(); 
-						}
-						calculate_macd_12_26_9(\@{$delta5_list{$key}},$size,\%macd_delta5_list,$key);				
-					}
-		
-					
-					my $filename = "macd/".$key."_macd_5min.txt";
-					open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-					#dump file
-					foreach (@{$macd_delta5_list{$key}})
-					{
-						my $elem = $_;
-						foreach (keys %{$elem})
-						{
-							print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-							print $fh print_number($elem->{$_}{'12'})." ";
-							print $fh print_number($elem->{$_}{'26'})." ";
-							print $fh print_number($elem->{$_}{'macd'})." ";
-							print $fh print_number($elem->{$_}{'9'})."\n";
-						}
-					}
-					close $fh;				
-					
-					$filename = "macd/".$key."_samples_1day.txt";
-					open($fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-					#dump file
-					if ( defined $delta_1d_list{$key} )
-					{
-						foreach (@{$delta_1d_list{$key}})
-						{
-							print $fh get_tstmp($_)." ".get_last($_)."\n";
-						}
-					}
-					close $fh;				
-				}
-			}
-		}
-	}
-	else
-	{
-		$runOnce_5 = 0;
-	}
-	
-
-	#populate the 30min distance list
-
-	{
-		use integer;
-		$minute = $crtTime->strftime("%M");
-		$reminder = $minute % 30;
-		$minute = $minute - $reminder;
-
-		$endMinute = sprintf("%02s",$minute);
-		$endTfTime30 = $crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-		$endTfTime30 = Time::Piece->strptime($endTfTime30,'%Y-%m-%d_%H-%M-%S');
-	}	
-	if  ( ( $crtTime - $endTfTime30 ) < 60 )
-	{
-		if ( $runOnce_30 == 0 )
-		{
-			print "update 30 min \n";
-			$runOnce_30 = 1;			
+			print "update $sample_space min \n";
+			$runOnce = 1;			
 			foreach (sort @symbols_list)
 			{
 				my $key = $_;		
 				my $good_ticker = 1;
-				update_samples($_,30,$endTfTime30,\%delta30_list);
+				update_samples($_,$sample_space,$endTfTimeGeneric,\%delta_generic_list);
+				
+				{
+				my $filename = "macd/".$key."_samples_generic_min.txt";
+				open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+
+				foreach (@{$delta_generic_list{$key}})
+				{
+					print $fh "$_ \n";		
+				}
+				close $fh;					
+				}
+				
 				
 				#get a 1 day delta trend
-				get_samples_days($_,1,$endTfTime5,\%delta_1d_list);							
+				get_samples_days($_,1,$endTfTimeGeneric,\%delta_1d_list);							
 				
-				if ( defined $delta30_list{$key} )	
+				if ( defined $delta_generic_list{$key} )	
 				{
-					# print Dumper %delta30_list;
-					my $size = @{$delta30_list{$key}};
+					# print Dumper %delta_generic_list;
+					my $size = @{$delta_generic_list{$key}};
 					# print "$key sample list size is $size \n";
-					if ( $size > 26 )
+					if ( $size > $second_ema )
 					{
-						update_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);		
+						update_macd_generic(\@{$delta_generic_list{$key}},$size,\%macd_delta_generic_list,$key);		
 					}
 					else
 					{
-						foreach (@{$macd_delta30_list{$key}})
-						{
-							shift @{$macd_delta30_list{$key}};
-						}
-						
-						if ( defined $macd_delta30_list{$key} )
+						if ( defined $macd_delta_generic_list{$key} )
 						{
 						#clear the array
-						@{$macd_delta30_list{$key}}=(); 
+						@{$macd_delta_generic_list{$key}}=(); 
 						}
-						calculate_macd_12_26_9(\@{$delta30_list{$key}},$size,\%macd_delta30_list,$key);				
+						calculate_macd_generic(\@{$delta_generic_list{$key}},$size,\%macd_delta_generic_list,$key);				
 					}
 
 					
-					my $filename = "macd/".$key."_macd_30min.txt";
+					my $filename = "macd/".$key."_macd_generic.txt";
 					open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
 
 					#dump file
-					foreach (@{$macd_delta30_list{$key}})
+					foreach (@{$macd_delta_generic_list{$key}})
 					{
 						my $elem = $_;
 						foreach (keys %{$elem})
 						{
 							print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-							print $fh print_number($elem->{$_}{'12'})." ";
-							print $fh print_number($elem->{$_}{'26'})." ";
+							print $fh print_number($elem->{$_}{'1'})." ";
+							print $fh print_number($elem->{$_}{'2'})." ";
 							print $fh print_number($elem->{$_}{'macd'})." ";
-							print $fh print_number($elem->{$_}{'9'})."\n";
+							print $fh print_number($elem->{$_}{'signal'})."\n";
 						}
 					}
 					close $fh;		
 
-					if ( defined $delta_1d_list{$key} )
-					{
-						my $previous_avg = 0;						
-						my $average_price = 0;
-						my $crt_counter = 0;
-						my $previous_date = "";
+					# if ( defined $delta_1d_list{$key} )
+					# {
+						# my $previous_avg = 0;						
+						# my $average_price = 0;
+						# my $crt_counter = 0;
+						# my $previous_date = "";
 						# print "$key size of delta_1d_list is ".@{$delta_1d_list{$key}}." \n";
-						foreach (@{$delta_1d_list{$key}})
-						{
-							my $elem = $_;
-							my $temp_tp = get_tstmp($elem);
-							my $temp_price = get_last($elem);
-							# print "$key Before time [$temp_tp] \n";
-							my $tempTime = Time::Piece->strptime($temp_tp,'%Y-%m-%d_%H-%M-%S');								
-							# print "$key After strptime $temp_tp \n";
-							my $temp_date = $tempTime->strftime("%F");
-							# print "$key After time $temp_tp \n";
-							if ( $previous_date ne $temp_date )
-							{
-								my $old_previous = $previous_avg;
-								if ( $crt_counter != 0 )
-								{
-									$previous_avg  = $average_price % $crt_counter;								
-								}
-								else
-								{
-									$previous_avg = $average_price;
-								}
-								$previous_date = $temp_date;
-								print "$key Avarage trend old $old_previous new $previous_avg \n";
-								if ( $old_previous != 0)
-								{
-									if ( $old_previous < $previous_avg)
-									{
-										#this is not a good ticker
-										$good_ticker = 0;
-										last;
-									}
-								}
+						# foreach (@{$delta_1d_list{$key}})
+						# {
+							# my $elem = $_;
+							# my $temp_tp = get_tstmp($elem);
+							# my $temp_price = get_last($elem);
+							# # print "$key Before time [$temp_tp] \n";
+							# my $tempTime = Time::Piece->strptime($temp_tp,'%Y-%m-%d_%H-%M-%S');								
+							# # print "$key After strptime $temp_tp \n";
+							# my $temp_date = $tempTime->strftime("%F");
+							# # print "$key After time $temp_tp \n";
+							# if ( $previous_date ne $temp_date )
+							# {
+								# my $old_previous = $previous_avg;
+								# if ( $crt_counter != 0 )
+								# {
+									# $previous_avg  = $average_price % $crt_counter;								
+								# }
+								# else
+								# {
+									# $previous_avg = $average_price;
+								# }
+								# $previous_date = $temp_date;
+								# print "$key Avarage trend old $old_previous new $previous_avg \n";
+								# if ( $old_previous != 0)
+								# {
+									# if ( $old_previous < $previous_avg)
+									# {
+										# #this is not a good ticker
+										# $good_ticker = 0;
+										# last;
+									# }
+								# }
 
-								$average_price = 0;
-								$crt_counter = 0;
+								# $average_price = 0;
+								# $crt_counter = 0;
 								
 								
-								$average_price = $temp_price;
-								$crt_counter++;
-							}
-							else
-							{
-								$average_price += $temp_price;
-								$crt_counter++;
-							}
-						}
-					}
+								# $average_price = $temp_price;
+								# $crt_counter++;
+							# }
+							# else
+							# {
+								# $average_price += $temp_price;
+								# $crt_counter++;
+							# }
+						# }
+					# }
 					
 					# here we make the decision
-					if ( $good_ticker == 1 )
+					my $macd_size = @{$macd_delta_generic_list{$key}};
+					if ( $macd_size > 60 )
 					{
-						my ($previous_decision_key) = keys %{$macd_delta30_list{$key}[-2]};					
-						my $previous_macd = $macd_delta30_list{$key}[-2]{$previous_decision_key}{'macd'};						
-						my $previous_9ema = $macd_delta30_list{$key}[-2]{$previous_decision_key}{'9'};												
-						my ($current_decision_key) = keys %{$macd_delta30_list{$key}[-1]};					
-						my $current_macd = $macd_delta30_list{$key}[-1]{$previous_decision_key}{'macd'};						
-						my $current_9ema = $macd_delta30_list{$key}[-1]{$previous_decision_key}{'9'};												
-						
-						if ( $previous_macd < $previous_9ema )
+						if ( $good_ticker == 1 )
 						{
-							my $previous_delta = ($previous_9ema - $previous_macd) * 100 / $previous_macd;
-							if ( $current_macd > $current_9ema )
+							my ($previous_decision_key) = keys %{$macd_delta_generic_list{$key}[-2]};					
+							my $previous_macd = $macd_delta_generic_list{$key}[-2]{$previous_decision_key}{'macd'};						
+							my $previous_9ema = $macd_delta_generic_list{$key}[-2]{$previous_decision_key}{'signal'};												
+							my ($current_decision_key) = keys %{$macd_delta_generic_list{$key}[-1]};					
+							my $current_macd = $macd_delta_generic_list{$key}[-1]{$current_decision_key}{'macd'};						
+							my $current_9ema = $macd_delta_generic_list{$key}[-1]{$current_decision_key}{'signal'};												
+							
+							if ( $previous_macd < $previous_9ema )
 							{
-								# this is a good to buy ticker
-								my $current_delta = ($current_macd - $current_9ema) * 100 / $current_9ema;
-								$buy_next =  $key;
-								print "The ticker to buy is $key $previous_delta $current_delta \n";
+								my $previous_delta = ($previous_9ema - $previous_macd) * 100 / $previous_macd;
+								if ( $current_macd > $current_9ema )
+								{
+									# this is a good to buy ticker
+									my $current_delta = ($current_macd - $current_9ema) * 100 / $current_9ema;
+									if ( $current_delta >= $incline_treshold )
+									{
+										$buy_next =  $key;
+										print "The ticker to buy is $key ".print_number($previous_delta)." ".print_number($current_delta)."macd size $macd_size \n";
+									}
+									# else
+									# {
+										# print "The ticker to buy is $key has a short incline ".print_number($previous_delta)." ".print_number($current_delta)." \n";
+									# }
+								}
+								# else
+								# {
+									# print "Not a cross $key $previous_macd $previous_9ema $current_macd $current_9ema \n";
+								# }
 							}
-							else
-							{
-								print "Not a cross $key $previous_macd $previous_9ema $current_macd $current_9ema \n";
-							}
-						}
-					} # good ticker
-					else
-					{
-						print "No good trend for $key \n";
+						} # good ticker
+						# else
+						# {
+							# print "No good trend for $key \n";
+						# }					
 					}
 				}
 			}
@@ -603,18 +414,17 @@ while (1)
 	}
 	else
 	{
-		$runOnce_30 = 0;
+		$runOnce = 0;
 	}	
 
-	my %current_list;
-	#do the sampling
-	%current_list = get_pair_list();
-	
-	
 	
 	# sleep $sleep_interval;	
 	# next;
-
+	
+	
+	my %current_list;
+	#do the sampling
+	%current_list = get_pair_list();
 	
 	# get the state machine
 	# my $execute_crt_tstmp = timestamp();
@@ -719,7 +529,7 @@ while (1)
 							my $buy_ammount = $btc_balance / $price ;
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
 							$current_spike++;
-							print "amount to buy $buy_ammount $btc_balance $price \n";
+							print "amount to buy $buy_ammount $btc_balance ".print_number($price)." \n";
 							$buy_timeout = 0;
 							$decoded_json = $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
@@ -831,11 +641,10 @@ while (1)
 						my $procent = (100 * $delta) / $crt_price;
 						print "price smaller then bought price $sell_ticker $latest_price  $crt_price -$procent  \n";						
 						$sleep_interval = $step_wait_selling;		
-
 						# force the sell 
-						if ( $delta > 5 )
+						if ( $procent > 5 )
 						{
-							print "WE FORCE THE SELL because delta is -$delta % !!\n";
+							print "WE FORCE THE SELL because procent is -$procent % !!\n";
 
 							if ( $latest_price > 0.00001000 )
 							{
@@ -860,7 +669,6 @@ while (1)
 						}
 						
 						$sleep_interval = $step_wait_execute;		
-						
 					}
 					
 					#case 2
@@ -1074,7 +882,7 @@ sub get_pair_list {
 	foreach (sort (keys (%{$decoded_json})))
 	{
 		# 'percentChange' => '0.03412950',
-		# 'low24hr' => '0.00036300',
+		# 'low24hr' => '0.00036400',
 		# 'last' => '0.00038057',
 		# 'high24hr' => '0.00038800',
 		# 'lowestAsk' => '0.00038055',
@@ -1262,7 +1070,7 @@ sub get_samples()
 			$temp_tstmp =~ s/:/-/g;
 			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
 			my $array_size = @{$output_hash->{$ticker}};
-			if ( $array_size > 300 )
+			if ( $array_size > 400 )
 			{
 				# we have read enough
 				$found_tstmp = 0;				
@@ -1333,7 +1141,7 @@ sub update_samples()
 	{
 		#remove the old samples
 		my $array_size = @{$output_hash->{$ticker}};
-		if  ( $array_size > 300 )
+		if  ( $array_size > 400 )
 		{
 			pop @{$output_hash->{$ticker}};
 		}
@@ -1363,88 +1171,85 @@ sub trim_list()
 	}
 }
 
-sub calculate_macd_12_26_9()
+sub calculate_macd_generic()
 {
 	my $array = shift;
 	my $array_size =  shift;
 	my $output_hash = shift;
 	my $ticker = shift;
 	
-	my $ema_12 = 0;
-	my $ema_26 = 0;
+	my $ema_1 = 0;
+	my $ema_2 = 0;
 	my $macd = 0;	
-	my $ema_9 = 0;	
+	my $ema_signal = 0;	
 	
-	my $multiplier_26 = 2/(26+1);
-	my $multiplier_12 = 2/(12+1);
-	my $multiplier_9 = 2/(9+1);		
+	my $multiplier_2 = 2/($second_ema+1);
+	my $multiplier_1 = 2/($first_ema+1);
+	my $multiplier_signal = 2/($signal+1);		
 	
 	for (my $i = 0; $i < $array_size; $i++) 
 	{
 			my $crt_tstmp =  get_tstmp($array->[$array_size - 1 - $i]);
 			my $last_price = get_last($array->[$array_size - 1 - $i]);
-			if ( ($i >=0) && ($i < 25 ) )
+			if ( ($i >=0) && ($i < ($second_ema - 1) ) )
 			{
-				$ema_26 += $last_price;
+				$ema_2 += $last_price;
 			}
-			if ( $i == 25 )
+			if ( $i == ($second_ema - 1) )
 			{
-					$ema_26 +=$last_price;
-					$ema_26 = $ema_26 / 26;
+					$ema_2 +=$last_price;
+					$ema_2 = $ema_2 / $second_ema;
 			}
-			if ( $i > 25 )
+			if ( $i > ($second_ema - 1) )
 			{
-				$ema_26 = (($last_price - $ema_26) * $multiplier_26) + $ema_26;			
-			}
-			
-			if ( ($i > 13) && ($i < 25 ) )
-			{
-				$ema_12 += $last_price;
-			}
-			if ( $i == 25 )
-			{
-					$ema_12 +=$last_price;
-					$ema_12 = $ema_12 / 12;
-			}
-			if ( $i > 25 )
-			{
-				$ema_12 = (($last_price - $ema_12) * $multiplier_12) + $ema_12;			
+				$ema_2 = (($last_price - $ema_2) * $multiplier_2) + $ema_2;			
 			}
 			
-			if ( $i > 25 )
+			if ( ($i > ($first_ema - 1 )) && ($i < ($second_ema - 1)  ) )
 			{
-				$macd = $ema_12 - $ema_26;
+				$ema_1 += $last_price;
+			}
+			if ( $i == ($second_ema - 1) )
+			{
+					$ema_1 +=$last_price;
+					$ema_1 = $ema_1 / $first_ema;
+			}
+			if ( $i > ($second_ema - 1) )
+			{
+				$ema_1 = (($last_price - $ema_1) * $multiplier_1) + $ema_1;			
 			}
 			
-			if ( ( $i > 25 ) && ( $i < 34 ) )
+			if ( $i > ($second_ema - 2) )
 			{
-				$ema_9 +=  $macd;
-			}
-			if ( $i == 34 )
-			{
-				$ema_9 +=  $macd;
-				$ema_9 = $ema_9 / 9;
-			}
-			if ( $i > 34 )
-			{
-				$ema_9 = (($macd - $ema_9) * $multiplier_9) + $ema_9;			
+				$macd = $ema_1 - $ema_2;
 			}
 			
-			
+			if ( ( $i > ($second_ema - 2) ) && ( $i < ($second_ema - 2 + $signal) ) )
+			{
+				$ema_signal +=  $macd;
+			}
+			if ( $i == ($second_ema - 2 + $signal) )
+			{
+				$ema_signal +=  $macd;
+				$ema_signal = $ema_signal / $signal;
+			}
+			if ( $i > ($second_ema - 2 + $signal) )
+			{
+				$ema_signal = (($macd - $ema_signal) * $multiplier_signal) + $ema_signal;			
+			}
 			
 			my %crt_elem;
 			$crt_elem{$crt_tstmp}{'price'} = $last_price;
-			$crt_elem{$crt_tstmp}{'12'} = $ema_12;
-			$crt_elem{$crt_tstmp}{'26'} = $ema_26;
+			$crt_elem{$crt_tstmp}{'1'} = $ema_1;
+			$crt_elem{$crt_tstmp}{'2'} = $ema_2;
 			$crt_elem{$crt_tstmp}{'macd'} = $macd;
-			$crt_elem{$crt_tstmp}{'9'} = $ema_9;
-			# print "$crt_tstmp $ticker ".sprintf("%0.8f",$ema_26)." ".sprintf("%0.8f",$ema_12)." ".sprintf("%0.8f",$macd)." ".sprintf("%0.8f",$ema_9)."  \n";
+			$crt_elem{$crt_tstmp}{'signal'} = $ema_signal;
+			# print "$crt_tstmp $ticker ".sprintf("%0.8f",$ema_2)." ".sprintf("%0.8f",$ema_1)." ".sprintf("%0.8f",$macd)." ".sprintf("%0.8f",$ema_signal)."  \n";
 			push @{$output_hash->{$ticker}} , \%crt_elem;
 	}			
 }
 
-
-sub update_macd_12_26_9()
+sub update_macd_generic()
 {
 	my $array = shift;
 	my $array_size =  shift;
@@ -1458,27 +1263,27 @@ sub update_macd_12_26_9()
 	my $last_price = get_last($array->[0]);
 	# print "crt tstmp and last price is $crt_tstmp $last_price \n";
 	
-	my $ema_12 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'12'};
-	my $ema_26 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'26'};
+	my $ema_1 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'1'};
+	my $ema_2 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'2'};
 	my $macd = 0;
-	my $ema_9 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'9'};
+	my $ema_signal = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'signal'};
 	
-	my $multiplier_26 = 2/(26+1);
-	my $multiplier_12 = 2/(12+1);
-	my $multiplier_9 = 2/(9+1);		
+	my $multiplier_26 = 2/($second_ema+1);
+	my $multiplier_12 = 2/($first_ema+1);
+	my $multiplier_9 = 2/($signal+1);		
 	
-	$ema_26 = (($last_price - $ema_26) * $multiplier_26) + $ema_26;		
-	$ema_12 = (($last_price - $ema_12) * $multiplier_12) + $ema_12;		
-	$macd = $ema_12 - $ema_26;
-	$ema_9 = (($macd - $ema_9) * $multiplier_9) + $ema_9;			
+	$ema_2 = (($last_price - $ema_2) * $multiplier_26) + $ema_2;		
+	$ema_1 = (($last_price - $ema_1) * $multiplier_12) + $ema_1;		
+	$macd = $ema_1 - $ema_2;
+	$ema_signal = (($macd - $ema_signal) * $multiplier_9) + $ema_signal;			
 	
 
 	my %crt_elem;
 	$crt_elem{$crt_tstmp}{'price'} = $last_price;
-	$crt_elem{$crt_tstmp}{'12'} = $ema_12;
-	$crt_elem{$crt_tstmp}{'26'} = $ema_26;
+	$crt_elem{$crt_tstmp}{'1'} = $ema_1;
+	$crt_elem{$crt_tstmp}{'2'} = $ema_2;
 	$crt_elem{$crt_tstmp}{'macd'} = $macd;
-	$crt_elem{$crt_tstmp}{'9'} = $ema_9;	
+	$crt_elem{$crt_tstmp}{'signal'} = $ema_signal;	
 
 	push @{$output_hash->{$ticker}} , \%crt_elem;
 	
@@ -1492,7 +1297,6 @@ sub print_number()
 	
 	return sprintf("%0.8f",$number);
 }
-
 
 sub get_samples_days()
 {
@@ -1548,5 +1352,5 @@ sub get_samples_days()
 	
 	
 	} while ($found_tstmp == 1)
-	
 }
+
