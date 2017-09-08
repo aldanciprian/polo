@@ -13,7 +13,7 @@ sub timestamp;
 
 while (1)
 {
-	my $filename = 'poloniex_trade_macd_mysql_wdg.txt';
+	my $filename = 'poloniex_trade_inertia_wdg.txt';
 	open(my $fh, '<', $filename) or die "Could not open file '$filename' $!";
 	my $last_line = "";
 	$last_line = $_,while (<$fh>);
@@ -37,9 +37,9 @@ while (1)
 			if ( ($crtTime - $lastTime) > 40 )
 			{
 				# the last line written by was 40 sec ago.Its to late
-				# restart the poloniex_trade_macd_mysql script
-				 print "kill poloniex_trade_macd_mysql becuase distance to the last time is $delta seconds \n";
-				 my $pid = `ps -ef | grep poloniex_trade_macd_mysql.pl | grep -v grep | awk '{print \$2}'`;
+				# restart the poloniex_trade_inertia script
+				 print "kill poloniex_trade_inertia becuase distance to the last time is $delta seconds \n";
+				 my $pid = `ps -ef | grep poloniex_trade_inertia.pl | grep -v grep | awk '{print \$2}'`;
 				 print "pid to kill is $pid \n";
 				 `kill -9 $pid`;
 			}

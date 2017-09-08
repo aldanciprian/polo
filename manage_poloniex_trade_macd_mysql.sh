@@ -10,7 +10,7 @@ do
 		PID=`echo ${PID_OUT} | awk '{print $2}'`
 		echo "poloniex_trade_macd_mysql is ${PID}"
 	else
-		./poloniex_trade_macd_mysql.pl 5 13 26 9
+		./poloniex_trade_macd_mysql.pl 30 13 26 9
 		
 	fi
 	sleep 2s

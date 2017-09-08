@@ -89,12 +89,9 @@ sub trim;
 sub get_state_machine;
 sub get_pair_list;
 sub get_next_buy_ticker;
-sub get_samples;
-sub get_samples_days;
+sub long_trend;
 sub update_samples;
 sub db2tstmp;
-sub calculate_macd_generic;
-sub update_macd_generic;
 sub trim_list;
 sub print_number;
 
@@ -111,9 +108,6 @@ sub get_highestBid;
 sub get_isFrozen;
 
 my %delta_generic_list;
-my %macd_delta_generic_list;
-
-my %delta_1d_list;
 
 
 my @symbols_list;
@@ -135,95 +129,48 @@ while (my $ref = $sth->fetchrow_hashref()) {
 $sth->finish();		
 
 
-my $minute = 0;
-my $reminder = 0;
-my $endMinute	= 0;
-my $endTfTimeGeneric= 0;
+my $window_size = 2200; # size of the window in seconds
 
-# watchdog
-my $filename_wdg = basename($0,".pl")."_wdg.txt";
-open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
-print $fh_wdg "start\n";
-close $fh_wdg;		
-
-#get the time now
 my $script_start_time = timestamp();
 my $start_crtTime =   Time::Piece->strptime($script_start_time,'%Y-%m-%d_%H-%M-%S');	
 
-#generic
+my $endTime = $start_crtTime - $window_size;
+my $end_tstmp = $endTime->strftime('%Y-%m-%d_%H-%M-%S');
+
+foreach (sort @symbols_list)
 {
-	use integer;
-	$minute = $start_crtTime->strftime("%M");
-	$reminder = $minute % $sample_space;
-	$minute = $minute - $reminder;
-
-	$endMinute = sprintf("%02s",$minute);
-	$endTfTimeGeneric = $start_crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-	$endTfTimeGeneric = Time::Piece->strptime($endTfTimeGeneric,'%Y-%m-%d_%H-%M-%S');
-}
-
-
-print "=========  initialize samples ".timestamp()." \n";	
-foreach (@symbols_list)
-{
-	get_samples($_,$sample_space,$endTfTimeGeneric,\%delta_generic_list);	
-}
-print "=========  end initialize samples ".timestamp()." \n";	
-
-
-# set lists to a specific maximum size
-trim_list(\%delta_generic_list,400);
-
-foreach (sort (keys(%delta_generic_list)) )
-{
-	my $key = $_;
-	my $filename = "macd/".$key."_samples_generic.txt";
-	open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-	foreach (@{$delta_generic_list{$key}})
-	{
-		print $fh "$_ \n";		
-	}
-	close $fh;		
-}
-
-
-foreach (sort (keys(%delta_generic_list)) )
-{
-		my $key = $_;
-		my $size = @{$delta_generic_list{$key}};
-		calculate_macd_generic(\@{$delta_generic_list{$key}},$size,\%macd_delta_generic_list,$key);
-}
-
-
-foreach ( sort (keys %macd_delta_generic_list))
-{
-	my $key = $_;
-	# print ref ($macd_delta_generic_list{$key});
-	my $filename = "macd/".$key."_macd_generic.txt";
-	open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+	my $key = $_;	
 	
-	foreach (@{$macd_delta_generic_list{$key}})
-	{
-		my $elem = $_;
-		foreach (keys %{$elem})
-		{
-			print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-			print $fh print_number($elem->{$_}{'1'})." ";
-			print $fh print_number($elem->{$_}{'2'})." ";
-			print $fh print_number($elem->{$_}{'macd'})." ";
-			print $fh print_number($elem->{$_}{'signal'})."\n";
-		}
+	$sth = $dbh->prepare("select * from $key where tstmp < '$script_start_time' and tstmp > '$end_tstmp' order by tstmp asc");
+	$sth->execute();
+	while (my $ref = $sth->fetchrow_hashref()) {
+		# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
+		my $temp_tstmp =  $ref->{'tstmp'};
+		# $temp_tstmp = db2tstmp($temp_tstmp);
+		$temp_tstmp =~ s/ /_/g;
+		$temp_tstmp =~ s/:/-/g;
+		my %elem;
+		$elem{'tstmp'} = $temp_tstmp;
+		$elem{'percentChange'} = $ref->{'percentChange'};
+		$elem{'low24hr'} = $ref->{'low24hr'};
+		$elem{'last'} = $ref->{'last'};
+		$elem{'high24hr'} = $ref->{'high24hr'};
+		$elem{'lowestAsk'} = $ref->{'lowestAsk'};
+		$elem{'quoteVolume'} = $ref->{'quoteVolume'};
+		$elem{'baseVolume'} = $ref->{'baseVolume'};
+		$elem{'id'} = $ref->{'id'};
+		$elem{'highestBid'} = $ref->{'highestBid'};
+		$elem{'isFrozen'} = $ref->{'isFrozen'};		
+		push @{$delta_generic_list{$key}} , \%elem;
+		# print "$key $temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} \n";
 	}
-	
-	close $fh;
+	$sth->finish();				
 }
 
 
 
 my $polo_wrapper = Poloniex->new($apikey,$sign);
 
-my $runOnce = 0;
 
 
 while (1)
@@ -243,190 +190,99 @@ while (1)
 	
 	my $crtTime =   Time::Piece->strptime($execute_crt_tstmp,'%Y-%m-%d_%H-%M-%S');	
 
-	#populate the generic distance list
 
+	
+	foreach (sort @symbols_list)
 	{
-		use integer;
-		$minute = $crtTime->strftime("%M");
-		$reminder = $minute % $sample_space;
-		$minute = $minute - $reminder;
-
-		$endMinute = sprintf("%02s",$minute);
-		$endTfTimeGeneric = $crtTime->strftime("%Y-%m-%d_%H-$endMinute-00");
-		$endTfTimeGeneric = Time::Piece->strptime($endTfTimeGeneric,'%Y-%m-%d_%H-%M-%S');
-	}	
-
-	if  ( ( $crtTime - $endTfTimeGeneric ) < 600 )
-	{
-		if ( $runOnce == 0 )
+		my $key = $_;		
+		update_samples($key,$crtTime);
+		
+		my $filename = "inertial/".$key."_samples_generic.txt";
+		open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
+		if ( @{$delta_generic_list{$key}} > 1 )
 		{
-			print "update $sample_space min \n";
-			$runOnce = 1;			
-			foreach (sort @symbols_list)
+			foreach (@{$delta_generic_list{$key}})
 			{
-				my $key = $_;		
-				my $good_ticker = 1;
-				update_samples($_,$sample_space,$endTfTimeGeneric,\%delta_generic_list);
-				{
-				my $filename = "macd/".$key."_samples_generic.txt";
-				open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-				foreach (@{$delta_generic_list{$key}})
-				{
-					print $fh "$_ \n";		
-				}
-				close $fh;					
-				}
-				
-				
-				# #get a 1 day delta trend
-				# get_samples_days($_,1,$endTfTimeGeneric,\%delta_1d_list);							
-				
-				if ( defined $delta_generic_list{$key} )	
-				{
-					# print Dumper %delta_generic_list;
-					my $size = @{$delta_generic_list{$key}};
-					# print "$key sample list size is $size \n";
-					if ( $size > $second_ema )
-					{
-						update_macd_generic(\@{$delta_generic_list{$key}},$size,\%macd_delta_generic_list,$key);		
-					}
-					else
-					{
-						if ( defined $macd_delta_generic_list{$key} )
-						{
-						#clear the array
-						@{$macd_delta_generic_list{$key}}=(); 
-						}
-						calculate_macd_generic(\@{$delta_generic_list{$key}},$size,\%macd_delta_generic_list,$key);				
-					}
-
-					
-					my $filename = "macd/".$key."_macd_generic.txt";
-					open(my $fh, '>', $filename) or die "Could not open file '$filename' $!";
-
-					#dump file
-					foreach (@{$macd_delta_generic_list{$key}})
-					{
-						my $elem = $_;
-						foreach (keys %{$elem})
-						{
-							print $fh "$_ ".print_number($elem->{$_}{'price'})." ";
-							print $fh print_number($elem->{$_}{'1'})." ";
-							print $fh print_number($elem->{$_}{'2'})." ";
-							print $fh print_number($elem->{$_}{'macd'})." ";
-							print $fh print_number($elem->{$_}{'signal'})."\n";
-						}
-					}
-					close $fh;		
-
-					# if ( defined $delta_1d_list{$key} )
-					# {
-						# my $previous_avg = 0;						
-						# my $average_price = 0;
-						# my $crt_counter = 0;
-						# my $previous_date = "";
-						# print "$key size of delta_1d_list is ".@{$delta_1d_list{$key}}." \n";
-						# foreach (@{$delta_1d_list{$key}})
-						# {
-							# my $elem = $_;
-							# my $temp_tp = get_tstmp($elem);
-							# my $temp_price = get_last($elem);
-							# # print "$key Before time [$temp_tp] \n";
-							# my $tempTime = Time::Piece->strptime($temp_tp,'%Y-%m-%d_%H-%M-%S');								
-							# # print "$key After strptime $temp_tp \n";
-							# my $temp_date = $tempTime->strftime("%F");
-							# # print "$key After time $temp_tp \n";
-							# if ( $previous_date ne $temp_date )
-							# {
-								# my $old_previous = $previous_avg;
-								# if ( $crt_counter != 0 )
-								# {
-									# $previous_avg  = $average_price % $crt_counter;								
-								# }
-								# else
-								# {
-									# $previous_avg = $average_price;
-								# }
-								# $previous_date = $temp_date;
-								# print "$key Avarage trend old $old_previous new $previous_avg \n";
-								# if ( $old_previous != 0)
-								# {
-									# if ( $old_previous < $previous_avg)
-									# {
-										# #this is not a good ticker
-										# $good_ticker = 0;
-										# last;
-									# }
-								# }
-
-								# $average_price = 0;
-								# $crt_counter = 0;
-								
-								
-								# $average_price = $temp_price;
-								# $crt_counter++;
-							# }
-							# else
-							# {
-								# $average_price += $temp_price;
-								# $crt_counter++;
-							# }
-						# }
-					# }
-					
-					# here we make the decision
-					my $macd_size = @{$macd_delta_generic_list{$key}};
-					if ( $macd_size > 60 )
-					{
-						if ( $good_ticker == 1 )
-						{
-							my ($previous_decision_key) = keys %{$macd_delta_generic_list{$key}[-2]};					
-							my $previous_macd = $macd_delta_generic_list{$key}[-2]{$previous_decision_key}{'macd'};						
-							my $previous_9ema = $macd_delta_generic_list{$key}[-2]{$previous_decision_key}{'signal'};												
-							my ($current_decision_key) = keys %{$macd_delta_generic_list{$key}[-1]};					
-							my $current_macd = $macd_delta_generic_list{$key}[-1]{$current_decision_key}{'macd'};						
-							my $current_9ema = $macd_delta_generic_list{$key}[-1]{$current_decision_key}{'signal'};												
-							
-							if ( $previous_macd < $previous_9ema )
-							{
-								my $previous_delta = ($previous_9ema - $previous_macd) * 100 / $previous_macd;
-								if ( $current_macd > $current_9ema )
-								{
-									# this is a good to buy ticker
-									my $current_delta = ($current_macd - $current_9ema) * 100 / $current_9ema;
-										
-
-											if ( $current_delta >= $incline_treshold )
-											{
-												$buy_next =  $key;
-												print "The ticker to buy is $key ".print_number($previous_delta)." ".print_number($current_delta)." macd size $macd_size ".print_number($previous_macd)." ".print_number($previous_9ema)." ".print_number($current_macd)." ".print_number($current_9ema)." $previous_decision_key $current_decision_key \n";
-											}
-											# else
-											# {
-												# print "The ticker to buy is $key has a short incline ".print_number($previous_delta)." ".print_number($current_delta)." \n";
-											# }
-									# else
-									# {
-										# print "Not a cross $key $previous_macd $previous_9ema $current_macd $current_9ema \n";
-									# }
-								}
-							}
-						} # good ticker
-						# else
-						# {
-							# print "No good trend for $key \n";
-						# }					
-					}
-				}
+				my $elem = $_;
+				print $fh "$elem->{'tstmp'} $elem->{'percentChange'} $elem->{'low24hr'} $elem->{'last'} $elem->{'high24hr'} $elem->{'lowestAsk'} $elem->{'quoteVolume'} $elem->{'baseVolume'} $elem->{'id'} $elem->{'highestBid'} $elem->{'isFrozen'} \n";
 			}
 		}
-	}
-	else
-	{
-		$runOnce = 0;
-	}	
+		close $fh;	
+		
+		if ( @{$delta_generic_list{$key}} <= 1 )
+		{
+			#this symbol has not enough data
+			next;
+		}
+		
+		my $long_trend_array = long_trend($key,$crtTime);
+		if ( @{$long_trend_array} >=2 ) 
+		{
+			# print "trend $delta_generic_list{$key}[-1]->{'tstmp'} $delta_generic_list{$key}[-1]->{'last'} $long_trend_array->[0]->{'tstmp'} $long_trend_array->[0]->{'last'} $long_trend_array->[1]->{'tstmp'} $long_trend_array->[1]->{'last'} ";
+			if ( ($delta_generic_list{$key}[-1]->{'last'} < $long_trend_array->[0]->{'last'} ) or ($long_trend_array->[0]->{'last'} < $long_trend_array->[1]->{'last'}) )  
+			{
+				# the trend is down
+				# print " DOWN \n";
+				next;
+			}
+			# else
+			# {
+				# print " UP \n";			
+			# }
+		}
+		
+		my $array_size = @{$delta_generic_list{$key}};		
+		my $window_array_size = $array_size;
 
+		my $min_price = 1000;
+		my $min_price_indx = 0;
+		my $max_price = 0;
+		my $max_price_indx = 0;
+		my $delta_price = 0;
+		my $max_increase = 0;
+
+		for (my $k = 0 ; $k < $window_array_size ; $k++)
+		{
+			# print "$key $min_price  $delta_generic_list{$key}[$k]->{'last'} \n";
+			if ( $min_price > $delta_generic_list{$key}[$k]->{'last'} )
+			{
+				$min_price = $delta_generic_list{$key}[$k]->{'last'};
+				$min_price_indx = $k;
+			}
+		}
+
+		for (my $k = $min_price_indx ; $k < $window_array_size ; $k++)
+		{
+			if ( $max_price < $delta_generic_list{$key}[$k]->{'last'} )
+			{
+				$max_price = $delta_generic_list{$key}[$k]->{'last'};
+				$max_price_indx = $k;
+			}
+		}
+
+		if ($min_price != 0 )
+		{
+			$delta_price = ((($max_price - $min_price) * 100)) / $min_price;			
+		}
+
+		my $min_tstmp = $delta_generic_list{$key}[$min_price_indx]->{'tstmp'};
+		my $minTime = Time::Piece->strptime($min_tstmp,'%Y-%m-%d_%H-%M-%S');
+		my $max_tstmp = $delta_generic_list{$key}[$max_price_indx]->{'tstmp'};
+		my $maxTime = Time::Piece->strptime($max_tstmp,'%Y-%m-%d_%H-%M-%S');
+
+		my $delta_tstmp_max_min = $maxTime - $minTime;
+
+		# print "$key delta $delta_price $delta_tstmp_max_min \n";
+		if ( (($delta_price >= 3.1) and ($delta_price <= 3.5 ) ) )
+		{
+			if ( (($delta_tstmp_max_min >= 2050) and ($delta_tstmp_max_min <= 2750 ) ) )
+			{
+				# This is a good ticker to buy
+				print "Buy this ticker $key $delta_tstmp_max_min s $delta_price % \n";
+				$buy_next = $key;
+			}
+		}
+	} # foreach symbol
 	
 	# sleep $sleep_interval;	
 	# next;
@@ -826,7 +682,7 @@ sub timestamp {
 sub get_state_machine {
 	my $previous_state = 0;
 	#read status file - last line
-	
+
 	unless(-e $filename_status) {
 			#Create the file if it doesn't exist
 			open my $fc, ">", $filename_status;
@@ -839,9 +695,7 @@ sub get_state_machine {
 		$last_line = $_,while (<$filename_status_h>);
 		close $filename_status_h;
 		chomp($last_line);
-	}	
-	
-	
+	}
 	if ( $last_line =~ /^$/ )
 	{
 		print "$filename_status is empty !!\n";
@@ -1113,59 +967,58 @@ sub get_samples()
 
 sub update_samples()
 {
-	my $ticker = shift;
-	my $delta = shift;
+	my $key = shift;
 	my $sample_tstmpTime = shift;
-	my $output_hash = shift;
-	my $found_tstmp = 0;
+
 	my $sample_tstmp = 0;
 	my $minim_TfTime = 0;
 	my $minim_sample_tstmp = 0;
 	
-	my $found = 0;
-	
+
 	$sample_tstmp = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');
 	# search only between the end of the TF and 60 seconds before
-	$minim_TfTime = $sample_tstmpTime - 60;
-	$minim_sample_tstmp = $minim_TfTime->strftime('%Y-%m-%d_%H-%M-%S');
-	# print "select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1 \n";
-	$sth = $dbh->prepare("select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1");
+	$minim_TfTime = $sample_tstmpTime - 30;	
+	$minim_sample_tstmp = $minim_TfTime->strftime('%Y-%m-%d_%H-%M-%S');	
+	
+	$sth = $dbh->prepare("select * from $key where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp asc");
 	$sth->execute();
 	while (my $ref = $sth->fetchrow_hashref()) {
-		# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
 		my $temp_tstmp =  $ref->{'tstmp'};
 		# $temp_tstmp = db2tstmp($temp_tstmp);
 		$temp_tstmp =~ s/ /_/g;
-		$temp_tstmp =~ s/:/-/g;		
-		$found = 1;
-		if ( $temp_tstmp ne get_tstmp(${$output_hash->{$ticker}}[0]) )
-		{
-			unshift @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
+		$temp_tstmp =~ s/:/-/g;
+		my %elem;
+		$elem{'tstmp'} = $temp_tstmp;
+		$elem{'percentChange'} = $ref->{'percentChange'};
+		$elem{'low24hr'} = $ref->{'low24hr'};
+		$elem{'last'} = $ref->{'last'};
+		$elem{'high24hr'} = $ref->{'high24hr'};
+		$elem{'lowestAsk'} = $ref->{'lowestAsk'};
+		$elem{'quoteVolume'} = $ref->{'quoteVolume'};
+		$elem{'baseVolume'} = $ref->{'baseVolume'};
+		$elem{'id'} = $ref->{'id'};
+		$elem{'highestBid'} = $ref->{'highestBid'};
+		$elem{'isFrozen'} = $ref->{'isFrozen'};		
+		if ( $temp_tstmp ne $delta_generic_list{$key}[-1]->{'tstmp'} )
+		{		
+			push @{$delta_generic_list{$key}} , \%elem;
 		}
 	}
-	$sth->finish();		
+	$sth->finish();	
+	
+	my $firstTime = 0;
+	my $lastTime = 0;
+	$firstTime =  Time::Piece->strptime($delta_generic_list{$key}[0]->{'tstmp'},'%Y-%m-%d_%H-%M-%S');	
+	$lastTime =  Time::Piece->strptime($delta_generic_list{$key}[-1]->{'tstmp'},'%Y-%m-%d_%H-%M-%S');		
+	
+	while ( ($lastTime - $firstTime) > $window_size )	
+	{
+		# print "$key eliminate one record \n";
+		shift @{$delta_generic_list{$key}} ;	
+		$firstTime =  Time::Piece->strptime($delta_generic_list{$key}[0]->{'tstmp'},'%Y-%m-%d_%H-%M-%S');	
+		$lastTime =  Time::Piece->strptime($delta_generic_list{$key}[-1]->{'tstmp'},'%Y-%m-%d_%H-%M-%S');		
+	}
 
-	if ($found == 0 )
-	{
-		# we haven't found the element
-		# we have to restart the calculation all over
-		# we have to clean the entire array;
-		print "NO element found for $ticker  ! \n";
-		if ( defined $output_hash->{$ticker} )
-		{
-		#clear the array
-		@{$output_hash->{$ticker}}=(); 
-		}
-	}
-	else
-	{
-		#remove the old samples
-		my $array_size = @{$output_hash->{$ticker}};
-		if  ( $array_size > 400 )
-		{
-			pop @{$output_hash->{$ticker}};
-		}
-	}
 }
 
 
@@ -1191,126 +1044,6 @@ sub trim_list()
 	}
 }
 
-sub calculate_macd_generic()
-{
-	my $array = shift;
-	my $array_size =  shift;
-	my $output_hash = shift;
-	my $ticker = shift;
-	
-	my $ema_1 = 0;
-	my $ema_2 = 0;
-	my $macd = 0;	
-	my $ema_signal = 0;	
-	
-	my $multiplier_2 = 2/($second_ema+1);
-	my $multiplier_1 = 2/($first_ema+1);
-	my $multiplier_signal = 2/($signal+1);		
-	
-	for (my $i = 0; $i < $array_size; $i++) 
-	{
-			my $crt_tstmp =  get_tstmp($array->[$array_size - 1 - $i]);
-			my $last_price = get_last($array->[$array_size - 1 - $i]);
-			if ( ($i >=0) && ($i < ($second_ema - 1) ) )
-			{
-				$ema_2 += $last_price;
-			}
-			if ( $i == ($second_ema - 1) )
-			{
-					$ema_2 +=$last_price;
-					$ema_2 = $ema_2 / $second_ema;
-			}
-			if ( $i > ($second_ema - 1) )
-			{
-				$ema_2 = (($last_price - $ema_2) * $multiplier_2) + $ema_2;			
-			}
-			
-			if ( ($i > ($first_ema - 1 )) && ($i < ($second_ema - 1)  ) )
-			{
-				$ema_1 += $last_price;
-			}
-			if ( $i == ($second_ema - 1) )
-			{
-					$ema_1 +=$last_price;
-					$ema_1 = $ema_1 / $first_ema;
-			}
-			if ( $i > ($second_ema - 1) )
-			{
-				$ema_1 = (($last_price - $ema_1) * $multiplier_1) + $ema_1;			
-			}
-			
-			if ( $i > ($second_ema - 2) )
-			{
-				$macd = $ema_1 - $ema_2;
-			}
-			
-			if ( ( $i > ($second_ema - 2) ) && ( $i < ($second_ema - 2 + $signal) ) )
-			{
-				$ema_signal +=  $macd;
-			}
-			if ( $i == ($second_ema - 2 + $signal) )
-			{
-				$ema_signal +=  $macd;
-				$ema_signal = $ema_signal / $signal;
-			}
-			if ( $i > ($second_ema - 2 + $signal) )
-			{
-				$ema_signal = (($macd - $ema_signal) * $multiplier_signal) + $ema_signal;			
-			}
-			
-			my %crt_elem;
-			$crt_elem{$crt_tstmp}{'price'} = $last_price;
-			$crt_elem{$crt_tstmp}{'1'} = $ema_1;
-			$crt_elem{$crt_tstmp}{'2'} = $ema_2;
-			$crt_elem{$crt_tstmp}{'macd'} = $macd;
-			$crt_elem{$crt_tstmp}{'signal'} = $ema_signal;
-			# print "$crt_tstmp $ticker ".sprintf("%0.8f",$ema_2)." ".sprintf("%0.8f",$ema_1)." ".sprintf("%0.8f",$macd)." ".sprintf("%0.8f",$ema_signal)."  \n";
-			push @{$output_hash->{$ticker}} , \%crt_elem;
-	}			
-}
-
-sub update_macd_generic()
-{
-	my $array = shift;
-	my $array_size =  shift;
-	my $output_hash = shift;
-	my $ticker = shift;
-	
-	my $output_array_size = @{$output_hash->{$ticker}};
-	my ($key) = keys %{$output_hash->{$ticker}[$output_array_size - 1]};
-
-	my $crt_tstmp =  get_tstmp($array->[0]);
-	my $last_price = get_last($array->[0]);
-	# print "crt tstmp and last price is $crt_tstmp $last_price \n";
-	
-	my $ema_1 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'1'};
-	my $ema_2 = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'2'};
-	my $macd = 0;
-	my $ema_signal = $output_hash->{$ticker}[$output_array_size - 1]{$key}{'signal'};
-	
-	my $multiplier_26 = 2/($second_ema+1);
-	my $multiplier_12 = 2/($first_ema+1);
-	my $multiplier_9 = 2/($signal+1);		
-	
-	$ema_2 = (($last_price - $ema_2) * $multiplier_26) + $ema_2;		
-	$ema_1 = (($last_price - $ema_1) * $multiplier_12) + $ema_1;		
-	$macd = $ema_1 - $ema_2;
-	$ema_signal = (($macd - $ema_signal) * $multiplier_9) + $ema_signal;			
-	
-
-	my %crt_elem;
-	$crt_elem{$crt_tstmp}{'price'} = $last_price;
-	$crt_elem{$crt_tstmp}{'1'} = $ema_1;
-	$crt_elem{$crt_tstmp}{'2'} = $ema_2;
-	$crt_elem{$crt_tstmp}{'macd'} = $macd;
-	$crt_elem{$crt_tstmp}{'signal'} = $ema_signal;	
-
-	push @{$output_hash->{$ticker}} , \%crt_elem;
-	
-	#remove the oldest element;
-	shift @{$output_hash->{$ticker}};
-}
-
 sub print_number()
 {
 	my $number = shift;
@@ -1318,32 +1051,19 @@ sub print_number()
 	return sprintf("%0.8f",$number);
 }
 
-sub get_samples_days()
-{
-	my $ticker = shift;
-	my $delta = shift;
-	my $sample_tstmpTime = shift;
-	my $output_hash = shift;
-	my $found_tstmp = 0;
-	my $sample_tstmp = 0;
-	my $minim_TfTime = 0;
-	my $minim_sample_tstmp = 0;
-	
-	if ( defined $output_hash->{$ticker} )
-	{
-	#clear the array
-	@{$output_hash->{$ticker}}=(); 
-	}
 
-	do
+sub long_trend()
+{
+	my $key = shift;
+	my $sample_tstmpTime = shift;
+	my @trend_array = ();
+	
+	for (my $i = 0 ; $i < 2; $i++ )
 	{
-		$found_tstmp = 0;	
-		$sample_tstmp = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');
-		# search only between the end of the TF and 60 seconds before
-		$minim_TfTime = $sample_tstmpTime - 21600;
-		$minim_sample_tstmp = $minim_TfTime->strftime('%Y-%m-%d_%H-%M-%S');
-		# print "select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1 \n";
-		$sth = $dbh->prepare("select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1");
+		$sample_tstmpTime = $sample_tstmpTime - 60*60*24*1;
+		my $tstmp_to_compare = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');	
+		# print "$key long trend $tstmp_to_compare \n";
+		$sth = $dbh->prepare("select * from $key where tstmp < '$tstmp_to_compare' order by tstmp desc limit 1");
 		$sth->execute();
 		while (my $ref = $sth->fetchrow_hashref()) {
 			# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
@@ -1351,26 +1071,22 @@ sub get_samples_days()
 			# $temp_tstmp = db2tstmp($temp_tstmp);
 			$temp_tstmp =~ s/ /_/g;
 			$temp_tstmp =~ s/:/-/g;
-
-			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
-			my $array_size = @{$output_hash->{$ticker}};
-			if ( $array_size > 20 )
-			{
-				# we have read enough
-				$found_tstmp = 0;				
-				last;
-			}
-			else
-			{
-				#read more
-				$found_tstmp = 1;
-			}
-
+			my %elem;
+			$elem{'tstmp'} = $temp_tstmp;
+			$elem{'percentChange'} = $ref->{'percentChange'};
+			$elem{'low24hr'} = $ref->{'low24hr'};
+			$elem{'last'} = $ref->{'last'};
+			$elem{'high24hr'} = $ref->{'high24hr'};
+			$elem{'lowestAsk'} = $ref->{'lowestAsk'};
+			$elem{'quoteVolume'} = $ref->{'quoteVolume'};
+			$elem{'baseVolume'} = $ref->{'baseVolume'};
+			$elem{'id'} = $ref->{'id'};
+			$elem{'highestBid'} = $ref->{'highestBid'};
+			$elem{'isFrozen'} = $ref->{'isFrozen'};		
+			push @trend_array , \%elem;
+			# print "$key $temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} \n";
 		}
-		$sth->finish();				
-		$sample_tstmpTime	= $sample_tstmpTime - ($delta*43200);
-	
-	
-	} while ($found_tstmp == 1)
+		$sth->finish();	
+	}
+	return \@trend_array;
 }
-
