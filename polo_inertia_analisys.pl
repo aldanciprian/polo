@@ -11,6 +11,8 @@ use Switch;
 use File::Basename;
 use DBI;
 use Math::Trig;
+use threads;
+use threads::shared;
 
 
 sub timestamp;
@@ -28,6 +30,8 @@ sub get_baseVolume;
 sub get_id; 
 sub get_highestBid;
 sub get_isFrozen;
+
+sub thread_work;
 
 my %delta_generic_list;
 
@@ -101,120 +105,10 @@ foreach (sort @symbols_list)
 		my $array_size = @{$delta_generic_list{$key}};
 		foreach (my $i = 0 ; $i < $array_size ; $i++)
 		{
-			my $temp_tstmp = $delta_generic_list{$key}[$i]->{'tstmp'};
-			my $tempTime = Time::Piece->strptime($temp_tstmp,'%Y-%m-%d_%H-%M-%S');
-			my $start_afterTime = 0;
-			my @temp_array = ();
-			my @temp_after_array = ();
-			my $stop_array = 0;
-			foreach (my $j = $i ; $j < $array_size ; $j++)
-			{
-				my $inner_temp_tstmp = $delta_generic_list{$key}[$j]->{'tstmp'};
-				my $inner_tempTime = Time::Piece->strptime($inner_temp_tstmp,'%Y-%m-%d_%H-%M-%S');
-				if ( $stop_array == 0 )
-				{
-					push @temp_array, $delta_generic_list{$key}[$j];				
-					if (($inner_tempTime - $tempTime) >= $window_size)
-					{
-						# we found the limit of the window
-						# get out of this for
-						$stop_array = 1;
-						$start_afterTime = $inner_tempTime;
-						next;
-					}
-				}
-				else
-				{
-					push @temp_after_array, $delta_generic_list{$key}[$j];
-					if (($inner_tempTime - $start_afterTime) >= $after_window_size)
-					{
-						# we found the limit of the window
-						# get out of this for
-						last;
-					}
-				}
-			} # end of foreach
-			# foreach (@temp_array)
-			# {
-				# print "$key $_->{'tstmp'} $_->{'last'}\n";
-			# }
-			# print "$key $temp_tstmp $start_afterTime \n";
-			
-			my $window_array_size = @temp_array;
-			my $after_window_array_size = @temp_after_array;
-			my $min_price = 1000;
-			my $min_price_indx = 0;
-			my $max_price = 0;
-			my $max_price_indx = 0;
-			my $max_price_after = 0;
-			my $max_price_indx_after = 0;
-			my $delta_price = 0;
-			my $max_increase = 0;
-			
-			for (my $k = 0 ; $k < $window_array_size ; $k++)
-			{
-				if ( $min_price > $temp_array[$k]->{'last'} )
-				{
-					$min_price = $temp_array[$k]->{'last'};
-					$min_price_indx = $k;
-				}
-			}
-			
-			for (my $k = $min_price_indx ; $k < $window_array_size ; $k++)
-			{
-				if ( $max_price < $temp_array[$k]->{'last'} )
-				{
-					$max_price = $temp_array[$k]->{'last'};
-					$max_price_indx = $k;
-				}
-			}
-			for (my $k = 0 ; $k < $after_window_array_size ; $k++)
-			{
-				if ( $max_price_after < $temp_after_array[$k]->{'last'} )
-				{
-					$max_price_after = $temp_after_array[$k]->{'last'};
-					$max_price_indx_after = $k;
-				}
-			}
-			
-			if ($min_price != 0 )
-			{
-				$delta_price = ((($max_price - $min_price) * 100)) / $min_price;			
-			}
-			
-			if ($max_price !=0)
-			{
-				$max_increase = ((($max_price_after - $max_price) * 100)) / $max_price;			
-			}
-			
+			# my $thread = threads->create('thread_work',$key,$i,$window_size,$after_window_size);		
+			# $thread->detach();
+			thread_work($key,$i,$window_size,$after_window_size);
 
-			my $min_tstmp = $temp_array[$min_price_indx]->{'tstmp'};
-			my $minTime = Time::Piece->strptime($min_tstmp,'%Y-%m-%d_%H-%M-%S');
-			my $max_tstmp = $temp_array[$max_price_indx]->{'tstmp'};
-			my $maxTime = Time::Piece->strptime($max_tstmp,'%Y-%m-%d_%H-%M-%S');
-			my $after_tstmp = $temp_after_array[$max_price_indx_after]->{'tstmp'};
-			my $afterTime = Time::Piece->strptime($after_tstmp,'%Y-%m-%d_%H-%M-%S');
-			
-			my $delta_tstmp_max_min = $maxTime - $minTime;
-			my $delta_tstmp_after_max = $afterTime - $maxTime;
-			
-			# my $angle=0;
-			
-			# if ( ($delta_tstmp_max_min != 0) and ($max_price != $min_price) )
-			# {
-				# $angle = 1 / (tan( ($max_price- $min_price ) / $delta_tstmp_max_min ));			
-				# print "\n========= ".print_number($max_price- $min_price )." ".print_number(($max_price- $min_price ) / $delta_tstmp_max_min )." ".print_number(tan( ($max_price- $min_price ) / $delta_tstmp_max_min ))." ".print_number(1/(tan( ($max_price- $min_price ) / $delta_tstmp_max_min )))." \n\n";				
-			# }
-
-
-			print "key=$key $min_price $max_price $max_price_after - D=".print_number($delta_price)." I=".print_number($max_increase)." S=$delta_tstmp_max_min s A=$delta_tstmp_after_max s $min_tstmp $window_size s $after_window_size s $temp_array[$min_price_indx]->{'baseVolume'} $temp_array[$max_price_indx]->{'baseVolume'} ";
-			print "$temp_after_array[$max_price_after]->{'baseVolume'} $temp_array[$min_price_indx]->{'quoteVolume'} $temp_array[$max_price_indx]->{'quoteVolume'} $temp_after_array[$max_price_after]->{'quoteVolume'} k $temp_array[$min_price_indx]->{'low24hr'} $temp_array[$max_price_indx]->{'low24hr'} $temp_after_array[$max_price_after]->{'low24hr'}  $temp_array[$min_price_indx]->{'high24hr'} $temp_array[$max_price_indx]->{'high24hr'} $temp_after_array[$max_price_after]->{'high24hr'} \n";
-			# foreach (@temp_array)
-			# {
-				# print "$key $_->{'tstmp'} \n";
-			# }
-			# print "\nNew window $window_size\n";		
-			# exit;
 		}
 	
 		$window_size += $window_step;
@@ -336,10 +230,136 @@ sub get_isFrozen
 
 
 
-sub print_number()
+sub print_number
 {
 	my $number = shift;
 	
 	return sprintf("%0.8f",$number);
 }
 
+
+
+sub thread_work
+{
+	my $key = shift;
+	my $i = shift;
+	my $window_size = shift;
+	my $after_window_size = shift;
+	
+	my $temp_tstmp = $delta_generic_list{$key}[$i]->{'tstmp'};
+	my $tempTime = Time::Piece->strptime($temp_tstmp,'%Y-%m-%d_%H-%M-%S');
+	my $start_afterTime = 0;
+	my @temp_array = ();
+	my @temp_after_array = ();
+	my $stop_array = 0;
+	my $array_size = @{$delta_generic_list{$key}};	
+	foreach (my $j = $i ; $j < $array_size ; $j++)
+	{
+		my $inner_temp_tstmp = $delta_generic_list{$key}[$j]->{'tstmp'};
+		my $inner_tempTime = Time::Piece->strptime($inner_temp_tstmp,'%Y-%m-%d_%H-%M-%S');
+		if ( $stop_array == 0 )
+		{
+			push @temp_array, $delta_generic_list{$key}[$j];				
+			if (($inner_tempTime - $tempTime) >= $window_size)
+			{
+				# we found the limit of the window
+				# get out of this for
+				$stop_array = 1;
+				$start_afterTime = $inner_tempTime;
+				next;
+			}
+		}
+		else
+		{
+			push @temp_after_array, $delta_generic_list{$key}[$j];
+			if (($inner_tempTime - $start_afterTime) >= $after_window_size)
+			{
+				# we found the limit of the window
+				# get out of this for
+				last;
+			}
+		}	
+	}
+	
+	# foreach (@temp_array)
+	# {
+		# print "$key $_->{'tstmp'} $_->{'last'}\n";
+	# }
+	# print "$key $temp_tstmp $start_afterTime \n";
+	
+	my $window_array_size = @temp_array;
+	my $after_window_array_size = @temp_after_array;
+	my $min_price = 1000;
+	my $min_price_indx = 0;
+	my $max_price = 0;
+	my $max_price_indx = 0;
+	my $max_price_after = 0;
+	my $max_price_indx_after = 0;
+	my $delta_price = 0;
+	my $max_increase = 0;
+	
+	for (my $k = 0 ; $k < $window_array_size ; $k++)
+	{
+		if ( $min_price > $temp_array[$k]->{'last'} )
+		{
+			$min_price = $temp_array[$k]->{'last'};
+			$min_price_indx = $k;
+		}
+	}
+	
+	for (my $k = $min_price_indx ; $k < $window_array_size ; $k++)
+	{
+		if ( $max_price < $temp_array[$k]->{'last'} )
+		{
+			$max_price = $temp_array[$k]->{'last'};
+			$max_price_indx = $k;
+		}
+	}
+	for (my $k = 0 ; $k < $after_window_array_size ; $k++)
+	{
+		if ( $max_price_after < $temp_after_array[$k]->{'last'} )
+		{
+			$max_price_after = $temp_after_array[$k]->{'last'};
+			$max_price_indx_after = $k;
+		}
+	}
+	
+	if ($min_price != 0 )
+	{
+		$delta_price = ((($max_price - $min_price) * 100)) / $min_price;			
+	}
+	
+	if ($max_price !=0)
+	{
+		$max_increase = ((($max_price_after - $max_price) * 100)) / $max_price;			
+	}
+	
+
+	my $min_tstmp = $temp_array[$min_price_indx]->{'tstmp'};
+	my $minTime = Time::Piece->strptime($min_tstmp,'%Y-%m-%d_%H-%M-%S');
+	my $max_tstmp = $temp_array[$max_price_indx]->{'tstmp'};
+	my $maxTime = Time::Piece->strptime($max_tstmp,'%Y-%m-%d_%H-%M-%S');
+	my $after_tstmp = $temp_after_array[$max_price_indx_after]->{'tstmp'};
+	my $afterTime = Time::Piece->strptime($after_tstmp,'%Y-%m-%d_%H-%M-%S');
+	
+	my $delta_tstmp_max_min = $maxTime - $minTime;
+	my $delta_tstmp_after_max = $afterTime - $maxTime;
+	
+	# my $angle=0;
+	
+	# if ( ($delta_tstmp_max_min != 0) and ($max_price != $min_price) )
+	# {
+		# $angle = 1 / (tan( ($max_price- $min_price ) / $delta_tstmp_max_min ));			
+		# print "\n========= ".print_number($max_price- $min_price )." ".print_number(($max_price- $min_price ) / $delta_tstmp_max_min )." ".print_number(tan( ($max_price- $min_price ) / $delta_tstmp_max_min ))." ".print_number(1/(tan( ($max_price- $min_price ) / $delta_tstmp_max_min )))." \n\n";				
+	# }
+
+	print "key=$key $min_price $max_price $max_price_after - D=".print_number( $delta_price )." I=".print_number( $max_increase )." S=$delta_tstmp_max_min s A=$delta_tstmp_after_max s $min_tstmp $window_size s $after_window_size s $temp_array[$min_price_indx]->{'baseVolume'} $temp_array[$max_price_indx]->{'baseVolume'} ";
+	print "$temp_after_array[$max_price_after]->{'baseVolume'} $temp_array[$min_price_indx]->{'quoteVolume'} $temp_array[$max_price_indx]->{'quoteVolume'} $temp_after_array[$max_price_after]->{'quoteVolume'} k $temp_array[$min_price_indx]->{'low24hr'} $temp_array[$max_price_indx]->{'low24hr'} $temp_after_array[$max_price_after]->{'low24hr'}  $temp_array[$min_price_indx]->{'high24hr'} $temp_array[$max_price_indx]->{'high24hr'} $temp_after_array[$max_price_after]->{'high24hr'} \n";
+	# foreach (@temp_array)
+	# {
+		# print "$key $_->{'tstmp'} \n";
+	# }
+	# print "\nNew window $window_size\n";		
+	# exit;	
+	
+}

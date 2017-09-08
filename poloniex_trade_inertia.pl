@@ -37,7 +37,7 @@ my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
 my $wining_procent = 1.1; # the procent where we sell
 my $wining_procent_divided = $wining_procent / 100; # the procent where we sell
-my $down_delta_procent_threshold =  0.23; # the procent from max win down
+my $down_delta_procent_threshold =  0.19; # the procent from max win down
 my $basename = basename($0,".pl");
 my $sample_minutes = 5; # number of minutes between each sample
 my $max_distance =  ($sample_minutes*60)+ 60; # maximum distance between 2 samples in seconds
@@ -292,6 +292,9 @@ while (1)
 	#do the sampling
 	%current_list = get_pair_list();
 	
+	# print Dumper %current_list;
+	# print "TEST ".get_last($current_list{'VTC'})." \n";
+	
 	# get the state machine
 	# my $execute_crt_tstmp = timestamp();
 	# print "============================= poloniex trade $execute_crt_tstmp  $$ ======================\n";		
@@ -381,7 +384,8 @@ while (1)
 							print "buy now \n";
 							# buy now
 							# write status file - last line
-							my $price = get_last($current_list{$buy_ticker});
+							my $price = 0;
+							$price = get_last($current_list{$buy_ticker});
 
 							if ( $price > 0.00001000 )
 							{
@@ -392,10 +396,15 @@ while (1)
 								# just increase with the small resolution
 								$price = $price - 0.00000001;							
 							}
+							if ( $price <= 0 )
+							{
+								print "Something is wrong with the price $buy_ticker $price !!!!\n";
+								last;
+							}
 							my $buy_ammount = $btc_balance / $price ;
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
 							$current_spike++;
-							print "amount to buy $buy_ammount $btc_balance ".print_number($price)." \n";
+							print "amount to buy $buy_ticker $buy_ammount $btc_balance ".print_number($price)." \n";
 							$buy_timeout = 0;
 							$decoded_json = $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
@@ -785,7 +794,7 @@ sub get_pair_list {
 			if ( $isFrozen == 0 )
 			{
 				#only unfrozen pairs					
-				if ( $baseVolume > $volumeRef)
+				# if ( $baseVolume > $volumeRef)
 				{
 					# only higher then a threshold
 					if ( $last > 0.00001000 )
@@ -803,7 +812,7 @@ sub get_pair_list {
 						# push @elem $id;
 						# push @elem $highestBid;
 						# push @elem $isFrozen;
-						$current_list{$coinName} = "$tstmp $percentChange $low24hr $last $high24hr $lowestAsk $quoteVolume $baseVolume $id $highestBid $isFrozen";
+						$current_list{$coinName} = "$tstmp $percentChange $low24hr $last $high24hr $lowestAsk $quoteVolume $baseVolume $id $highestBid $isFrozen ";
 						# print $filename_samplings_all_h "$tstmp $coinName $percentChange $low24hr $last $high24hr $lowestAsk $quoteVolume $baseVolume $id $highestBid $isFrozen \n";
 						# push @current_list, %elem_hash;				
 					}

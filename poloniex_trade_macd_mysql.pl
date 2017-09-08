@@ -931,7 +931,7 @@ sub get_pair_list {
 			if ( $isFrozen == 0 )
 			{
 				#only unfrozen pairs					
-				if ( $baseVolume > $volumeRef)
+				# if ( $baseVolume > $volumeRef)
 				{
 					# only higher then a threshold
 					if ( $last > 0.00001000 )
