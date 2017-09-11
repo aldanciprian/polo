@@ -520,6 +520,11 @@ while (1)
 						# there is no order
 						# print "there is no order \n";
 						my $buy_ticker = $buy_next;
+						if ( "BTC_$buy_ticker" == $crt_pair )
+						{
+							print "The last cycle was with $crt_pair , and the new one cannot be BTC_$buy_ticker.Wait for the next! \n";
+							last;
+						}						
 						if ( $buy_ticker ne "WRONG" )
 						{
 							print "buy now \n";
@@ -628,7 +633,7 @@ while (1)
 								}
 								else
 								{
-									print "let it go down $sell_ticker $latest_price $procent $down_delta_procent\n";
+									print "let it go down $sell_ticker $latest_price $procent $down_delta_procent %\n";
 								}
 							}
 							else
@@ -642,17 +647,17 @@ while (1)
 						}
 						else
 						{
-							print "Not reached the wining procent $sell_ticker $latest_price  $crt_price $procent \n";
+							print "Not reached the wining procent $sell_ticker $latest_price  $crt_price $procent %\n";
 						}
 					}
 					else
 					{
 						my $delta = $crt_price - $latest_price;
 						my $procent = (100 * $delta) / $crt_price;
-						print "price smaller then bought price $sell_ticker $latest_price  $crt_price -$procent  \n";						
+						print "price smaller then bought price $sell_ticker $latest_price  $crt_price -$procent %\n";						
 						$sleep_interval = $step_wait_selling;		
 						# force the sell 
-						if ( $procent > 5 )
+						if ( $procent > 10 )
 						{
 							print "WE FORCE THE SELL because procent is -$procent % !!\n";
 

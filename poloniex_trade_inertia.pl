@@ -129,6 +129,26 @@ while (my $ref = $sth->fetchrow_hashref()) {
 $sth->finish();		
 
 
+
+my @potential_inclines = ( 
+	{
+		delta => "1.1", #c=1159 n=3 p=1156
+		time => "397"
+	},
+	{
+		delta => "0.6", #c=958 n=0 p=958
+		time => "1243"
+	},
+	{
+		delta => "1.0", #c=916 n=2 p=914
+		time => "200"
+	},	
+	{
+		delta => "2.1", #c=885 n=0 p=885
+		time => "1599"
+	},
+);
+
 my $window_size = 2200; # size of the window in seconds
 
 my $script_start_time = timestamp();
@@ -273,15 +293,21 @@ while (1)
 		my $delta_tstmp_max_min = $maxTime - $minTime;
 
 		# print "$key delta $delta_price $delta_tstmp_max_min \n";
-		if ( (($delta_price >= 3.1) and ($delta_price <= 3.5 ) ) )
+		foreach ( @potential_inclines )
 		{
-			if ( (($delta_tstmp_max_min >= 2050) and ($delta_tstmp_max_min <= 2750 ) ) )
+			my $delta =  $_->{'delta'};
+			my $time =  $_->{'time'};
+			if ( (($delta_price >= $delta) and ($delta_price < ($delta + 0.1) ) ) )
 			{
-				# This is a good ticker to buy
-				print "Buy this ticker $key $delta_tstmp_max_min s $delta_price % \n";
-				$buy_next = $key;
-			}
-		}
+				if ( (($delta_tstmp_max_min >= $time) and ($delta_tstmp_max_min < ($time+50) ) ) )
+				{
+					# This is a good ticker to buy
+					print "Buy this ticker $key $delta_tstmp_max_min s $delta_price % current_price $delta_generic_list{$key}[-1]->{'last'} $delta_generic_list{$key}[-1]->{'tstmp'} \n";
+					$buy_next = $key;
+					last;
+				}
+			}			
+		} # foreach potential incline
 	} # foreach symbol
 	
 	# sleep $sleep_interval;	
@@ -379,6 +405,11 @@ while (1)
 						# there is no order
 						# print "there is no order \n";
 						my $buy_ticker = $buy_next;
+						if ( "BTC_$buy_ticker" == $crt_pair )
+						{
+							print "The last cycle was with $crt_pair , and the new one cannot be BTC_$buy_ticker.Wait for the next! \n";
+							last;
+						}
 						if ( $buy_ticker ne "WRONG" )
 						{
 							print "buy now \n";
@@ -485,7 +516,7 @@ while (1)
 									# print Dumper $decoded_json;
 									my $btc_after_sell = $latest_price * $crt_ammount;
 									$btc_after_sell = $btc_after_sell - ( $btc_after_sell * 0.0015 );
-									print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+									print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell $procent % \n";
 									open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 									print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 									close $filename_status_h;					
@@ -493,12 +524,12 @@ while (1)
 								}
 								else
 								{
-									print "let it go down $sell_ticker $latest_price $procent $down_delta_procent\n";
+									print "let it go down $sell_ticker $latest_price $procent % $down_delta_procent %\n";
 								}
 							}
 							else
 							{
-								print "let it raise  $sell_ticker $latest_price $procent \n";
+								print "let it raise  $sell_ticker $latest_price $procent %\n";
 								open(my $filename_selling_h, '>', $filename_selling) or warn "Could not open file '$filename_selling' $!";
 								print $filename_selling_h "$latest_price\n";
 								close $filename_selling_h;									
@@ -507,17 +538,17 @@ while (1)
 						}
 						else
 						{
-							print "Not reached the wining procent $sell_ticker $latest_price  $crt_price $procent \n";
+							print "Not reached the wining procent $sell_ticker $latest_price  $crt_price $procent %\n";
 						}
 					}
 					else
 					{
 						my $delta = $crt_price - $latest_price;
 						my $procent = (100 * $delta) / $crt_price;
-						print "price smaller then bought price $sell_ticker $latest_price  $crt_price -$procent  \n";						
+						print "price smaller then bought price $sell_ticker $latest_price  $crt_price -$procent % \n";						
 						$sleep_interval = $step_wait_selling;		
 						# force the sell 
-						if ( $procent > 5 )
+						if ( $procent > 15 )
 						{
 							print "WE FORCE THE SELL because procent is -$procent % !!\n";
 
