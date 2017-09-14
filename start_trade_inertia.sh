@@ -27,7 +27,7 @@ do
 	echo "============GENESIS polo $0 $$============"
 	date
 	cd $BASE/
-	./manage_trade_inertia.sh
+    ./manage_poloniex_trade_inertia.sh	
 
 	sleep 2s
 done

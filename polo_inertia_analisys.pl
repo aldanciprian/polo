@@ -102,19 +102,22 @@ foreach (sort @symbols_list)
 
 	do
 	{
-		my $array_size = @{$delta_generic_list{$key}};
-		foreach (my $i = 0 ; $i < $array_size ; $i++)
+		if ( $delta_generic_list{$key} )
 		{
-			# my $thread = threads->create('thread_work',$key,$i,$window_size,$after_window_size);		
-			# $thread->detach();
-			thread_work($key,$i,$window_size,$after_window_size);
+			my $array_size = @{$delta_generic_list{$key}};
+			foreach (my $i = 0 ; $i < $array_size ; $i++)
+			{
+				# my $thread = threads->create('thread_work',$key,$i,$window_size,$after_window_size);		
+				# $thread->detach();
+				thread_work($key,$i,$window_size,$after_window_size);
 
+			}
+		
+			$window_size += $window_step;
+			$after_window_size = $window_size  * 2;
+			# print "\n\nNew window \n\n";	
+			print "\n$key next window $window_size $after_window_size \n";
 		}
-	
-		$window_size += $window_step;
-		$after_window_size = $window_size  * 2;
-		# print "\n\nNew window \n\n";	
-		print "\n$key next window $window_size $after_window_size \n";
 		# exit;		
 	} while ($window_size < ($max_window_size));
 }
@@ -353,8 +356,16 @@ sub thread_work
 		# print "\n========= ".print_number($max_price- $min_price )." ".print_number(($max_price- $min_price ) / $delta_tstmp_max_min )." ".print_number(tan( ($max_price- $min_price ) / $delta_tstmp_max_min ))." ".print_number(1/(tan( ($max_price- $min_price ) / $delta_tstmp_max_min )))." \n\n";				
 	# }
 
+	my $filename_wdg = basename($0,".pl")."_output.txt";
+	open(my $fh_wdg, '>>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
+	# print $fh_wdg "$execute_crt_tstmp\n";
+	
+	print $fh_wdg "key=$key $min_price $max_price $max_price_after - D=".print_number( $delta_price )." I=".print_number( $max_increase )." S=$delta_tstmp_max_min s A=$delta_tstmp_after_max s $min_tstmp $window_size s $after_window_size s $temp_array[$min_price_indx]->{'baseVolume'} $temp_array[$max_price_indx]->{'baseVolume'} ";
+	print $fh_wdg "$temp_after_array[$max_price_after]->{'baseVolume'} $temp_array[$min_price_indx]->{'quoteVolume'} $temp_array[$max_price_indx]->{'quoteVolume'} $temp_after_array[$max_price_after]->{'quoteVolume'} k $temp_array[$min_price_indx]->{'low24hr'} $temp_array[$max_price_indx]->{'low24hr'} $temp_after_array[$max_price_after]->{'low24hr'}  $temp_array[$min_price_indx]->{'high24hr'} $temp_array[$max_price_indx]->{'high24hr'} $temp_after_array[$max_price_after]->{'high24hr'} \n";
+	
 	print "key=$key $min_price $max_price $max_price_after - D=".print_number( $delta_price )." I=".print_number( $max_increase )." S=$delta_tstmp_max_min s A=$delta_tstmp_after_max s $min_tstmp $window_size s $after_window_size s $temp_array[$min_price_indx]->{'baseVolume'} $temp_array[$max_price_indx]->{'baseVolume'} ";
 	print "$temp_after_array[$max_price_after]->{'baseVolume'} $temp_array[$min_price_indx]->{'quoteVolume'} $temp_array[$max_price_indx]->{'quoteVolume'} $temp_after_array[$max_price_after]->{'quoteVolume'} k $temp_array[$min_price_indx]->{'low24hr'} $temp_array[$max_price_indx]->{'low24hr'} $temp_after_array[$max_price_after]->{'low24hr'}  $temp_array[$min_price_indx]->{'high24hr'} $temp_array[$max_price_indx]->{'high24hr'} $temp_after_array[$max_price_after]->{'high24hr'} \n";
+	close $fh_wdg;			
 	# foreach (@temp_array)
 	# {
 		# print "$key $_->{'tstmp'} \n";

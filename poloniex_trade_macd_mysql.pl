@@ -37,7 +37,7 @@ my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
 my $wining_procent = 1.1; # the procent where we sell
 my $wining_procent_divided = $wining_procent / 100; # the procent where we sell
-my $down_delta_procent_threshold =  0.23; # the procent from max win down
+my $down_delta_procent_threshold =  0.19; # the procent from max win down
 my $basename = basename($0,".pl");
 my $sample_minutes = 5; # number of minutes between each sample
 my $max_distance =  ($sample_minutes*60)+ 60; # maximum distance between 2 samples in seconds
@@ -89,6 +89,7 @@ sub trim;
 sub get_state_machine;
 sub get_pair_list;
 sub get_next_buy_ticker;
+sub long_trend;
 sub get_samples;
 sub get_samples_days;
 sub update_samples;
@@ -278,7 +279,21 @@ while (1)
 				close $fh;					
 				}
 				
-				
+				my $long_trend_array = long_trend($key,$crtTime);
+				if ( @{$long_trend_array} >=2 ) 
+				{
+					# print "trend $delta_generic_list{$key}[-1]->{'tstmp'} $delta_generic_list{$key}[-1]->{'last'} $long_trend_array->[0]->{'tstmp'} $long_trend_array->[0]->{'last'} $long_trend_array->[1]->{'tstmp'} $long_trend_array->[1]->{'last'} ";
+					if ( (get_last($delta_generic_list{$key}[-1]) < $long_trend_array->[0]->{'last'} ) or ($long_trend_array->[0]->{'last'} < $long_trend_array->[1]->{'last'}) )  
+					{
+						# the trend is down
+						# print " DOWN \n";
+						next;
+					}
+					# else
+					# {
+						# print " UP \n";			
+					# }
+				}
 				# #get a 1 day delta trend
 				# get_samples_days($_,1,$endTfTimeGeneric,\%delta_1d_list);							
 				
@@ -520,7 +535,7 @@ while (1)
 						# there is no order
 						# print "there is no order \n";
 						my $buy_ticker = $buy_next;
-						if ( "BTC_$buy_ticker" == $crt_pair )
+						if ( "BTC_$buy_ticker" eq $crt_pair )
 						{
 							print "The last cycle was with $crt_pair , and the new one cannot be BTC_$buy_ticker.Wait for the next! \n";
 							last;
@@ -541,10 +556,15 @@ while (1)
 								# just increase with the small resolution
 								$price = $price - 0.00000001;							
 							}
+							if ( $price <= 0 )
+							{
+								print "Something is wrong with the price $buy_ticker $price !!!!\n";
+								last;
+							}
 							my $buy_ammount = $btc_balance / $price ;
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
 							$current_spike++;
-							print "amount to buy $buy_ammount $btc_balance ".print_number($price)." \n";
+							print "amount to buy $buy_ticker $buy_ammount $btc_balance ".print_number($price)." \n";
 							$buy_timeout = 0;
 							$decoded_json = $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
@@ -625,7 +645,7 @@ while (1)
 									# print Dumper $decoded_json;
 									my $btc_after_sell = $latest_price * $crt_ammount;
 									$btc_after_sell = $btc_after_sell - ( $btc_after_sell * 0.0015 );
-									print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+									print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell $procent % \n";
 									open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 									print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 									close $filename_status_h;					
@@ -633,12 +653,12 @@ while (1)
 								}
 								else
 								{
-									print "let it go down $sell_ticker $latest_price $procent $down_delta_procent %\n";
+									print "let it go down $sell_ticker $latest_price $procent % $down_delta_procent %\n";
 								}
 							}
 							else
 							{
-								print "let it raise  $sell_ticker $latest_price $procent \n";
+								print "let it raise  $sell_ticker $latest_price $procent %\n";
 								open(my $filename_selling_h, '>', $filename_selling) or warn "Could not open file '$filename_selling' $!";
 								print $filename_selling_h "$latest_price\n";
 								close $filename_selling_h;									
@@ -1379,3 +1399,42 @@ sub get_samples_days()
 	} while ($found_tstmp == 1)
 }
 
+
+sub long_trend()
+{
+	my $key = shift;
+	my $sample_tstmpTime = shift;
+	my @trend_array = ();
+	
+	for (my $i = 0 ; $i < 2; $i++ )
+	{
+		$sample_tstmpTime = $sample_tstmpTime - 60*60*24*1;
+		my $tstmp_to_compare = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');	
+		# print "$key long trend $tstmp_to_compare \n";
+		$sth = $dbh->prepare("select * from $key where tstmp < '$tstmp_to_compare' order by tstmp desc limit 1");
+		$sth->execute();
+		while (my $ref = $sth->fetchrow_hashref()) {
+			# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
+			my $temp_tstmp =  $ref->{'tstmp'};
+			# $temp_tstmp = db2tstmp($temp_tstmp);
+			$temp_tstmp =~ s/ /_/g;
+			$temp_tstmp =~ s/:/-/g;
+			my %elem;
+			$elem{'tstmp'} = $temp_tstmp;
+			$elem{'percentChange'} = $ref->{'percentChange'};
+			$elem{'low24hr'} = $ref->{'low24hr'};
+			$elem{'last'} = $ref->{'last'};
+			$elem{'high24hr'} = $ref->{'high24hr'};
+			$elem{'lowestAsk'} = $ref->{'lowestAsk'};
+			$elem{'quoteVolume'} = $ref->{'quoteVolume'};
+			$elem{'baseVolume'} = $ref->{'baseVolume'};
+			$elem{'id'} = $ref->{'id'};
+			$elem{'highestBid'} = $ref->{'highestBid'};
+			$elem{'isFrozen'} = $ref->{'isFrozen'};		
+			push @trend_array , \%elem;
+			# print "$key $temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} \n";
+		}
+		$sth->finish();	
+	}
+	return \@trend_array;
+}

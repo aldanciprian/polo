@@ -132,20 +132,52 @@ $sth->finish();
 
 my @potential_inclines = ( 
 	{
-		delta => "1.1", #c=1159 n=3 p=1156
+		delta => "0.4", #p=2048 r=5.40540541
+		time => "1580"
+	},
+	{
+		delta => "5.5", #p=2060 r=6.38294833
+		time => "1580"
+	},
+	{
+		delta => "3.3", #p=1966 r=6.03480126
+		time => "1570"
+	},
+	{
+		delta => "7.8", #p=1936 r=8.62825089
+		time => "1970"
+	},
+	{
+		delta => "4.8", #p=1905 r=5.21093949
+		time => "1600"
+	},
+	{
+		delta => "2.3", #p=1735 r=2.71546635
+		time => "2430"
+	},
+	{
+		delta => "1.1", #p=1544 r=2.06360283
+		time => "2330"
+	},
+	{
+		delta => "1.4", #p=1524 r=2.00856990
+		time => "710"
+	},
+	{
+		delta => "0.4", #p=1483 r=4.54054054
+		time => "1290"
+	},
+	{
+		delta => "0.8", #p=1438 r=2.81551398
+		time => "2620"
+	},
+	{
+		delta => "0.9", #p=1170 r=2.02806402
+		time => "1190"
+	},
+	{
+		delta => "1.1", #p=1156 r=2.10998878
 		time => "397"
-	},
-	{
-		delta => "0.6", #c=958 n=0 p=958
-		time => "1243"
-	},
-	{
-		delta => "1.0", #c=916 n=2 p=914
-		time => "200"
-	},	
-	{
-		delta => "2.1", #c=885 n=0 p=885
-		time => "1599"
 	},
 );
 
@@ -299,7 +331,7 @@ while (1)
 			my $time =  $_->{'time'};
 			if ( (($delta_price >= $delta) and ($delta_price < ($delta + 0.1) ) ) )
 			{
-				if ( (($delta_tstmp_max_min >= $time) and ($delta_tstmp_max_min < ($time+50) ) ) )
+				if ( (($delta_tstmp_max_min >= $time) and ($delta_tstmp_max_min < ($time+20) ) ) )
 				{
 					# This is a good ticker to buy
 					print "Buy this ticker $key $delta_tstmp_max_min s $delta_price % current_price $delta_generic_list{$key}[-1]->{'last'} $delta_generic_list{$key}[-1]->{'tstmp'} \n";
@@ -405,7 +437,7 @@ while (1)
 						# there is no order
 						# print "there is no order \n";
 						my $buy_ticker = $buy_next;
-						if ( "BTC_$buy_ticker" == $crt_pair )
+						if ( "BTC_$buy_ticker" eq $crt_pair )
 						{
 							print "The last cycle was with $crt_pair , and the new one cannot be BTC_$buy_ticker.Wait for the next! \n";
 							last;
