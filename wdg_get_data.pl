@@ -10,7 +10,7 @@ use File::Basename;
 my $sleep_intv = 10;
 
 sub timestamp;
-
+sleep(60);
 while (1)
 {
 	my $filename = 'wdg_get_data.txt';
