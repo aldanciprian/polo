@@ -264,7 +264,7 @@ while (1)
 								$delta = ( ( $sum - $last_average ) * 100 ) / $last_average;								
 							}
 							
-							# print "$key $delta \n";
+							print "$key $delta \n";
 							if (!(($delta >= 0.1) && ($delta <= 3)))
 							{
 								#delta is not in limit
@@ -283,6 +283,7 @@ while (1)
 
 						my $current_price = get_last($delta_generic_list{$key}[0]);
 						my $current_deviation = 0;
+						print "$key $current_price $average_delta_generic_list{$key}[-1] \n";
 						if ( $current_price > $average_delta_generic_list{$key}[-1] )
 						{
 							#the price is above average
@@ -294,7 +295,7 @@ while (1)
 						my %elem_potential;
 						$elem_potential{'ticker'} = $key;
 						$elem_potential{'deviation'} = $current_deviation;
-						print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % \n";
+						print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price \n";
 						push @potential_buyers , \%elem_potential;
 					} # good ticker
 				}
