@@ -78,8 +78,8 @@ my $incline_treshold = 15; # procent where average goes over signal and up
 # SELLING 3
 # SOLD 4
 
-my $max_average_size =  35; # size of average elements
-my $max_sample_size = 100; # size of sample elements
+my $max_average_size =  40; # size of average elements
+my $max_sample_size = 160; # size of sample elements
 my $sample_space = $ARGV[0]; #seconds between samples
 # my $first_ema = $ARGV[1]; #1ema size
 # my $second_ema = $ARGV[2]; #2ema size
