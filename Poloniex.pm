@@ -67,7 +67,8 @@ sub query {
 			if ( exists($dec->{'error'} ) )
 			{
 				print Devel::StackTrace->new()->as_string();			
-				die "A logical error happened: $dec->{'error'}\n";
+				print "A logical error happened: $dec->{'error'}\n";
+				return false;
 			}
 		}
    if (ref($dec) eq "HASH") { return \%{  $dec  }; } else { return  \@{  $dec  }; }
@@ -135,13 +136,27 @@ sub get_balances() {
 
 
 sub get_open_orders() { # Returns array of open order hashes
- $self = shift; $pair = shift;
- return $self->query(
+ $self = shift; $pair = shift; 
+ my $ret = $self->query(
   {
    'command' => 'returnOpenOrders',
    'currencyPair' => uc($pair)
   }
  );
+
+ if ( $ret == false )
+ {
+	 return $self->query(
+	  {
+	   'command' => 'returnOpenOrders',
+	   'currencyPair' => uc($pair)
+	  }
+	 );
+ }
+ else
+ {
+	return $ret;
+ }
 }
 
 sub get_my_trade_history() {

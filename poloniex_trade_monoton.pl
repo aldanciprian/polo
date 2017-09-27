@@ -33,7 +33,7 @@ my $crt_tstmp = 0; # the tstmp of the current order
 my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
-my $btc_balance = 0.00011; # the ammount in BTC
+my $btc_balance = 0.0002; # the ammount in BTC
 my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
 # my $wining_procent = 1.1; # the procent where we sell
@@ -78,8 +78,8 @@ my $incline_treshold = 15; # procent where average goes over signal and up
 # SELLING 3
 # SOLD 4
 
-my $max_average_size =  40; # size of average elements
-my $max_sample_size = 160; # size of sample elements
+my $max_average_size =  35; # size of average elements
+my $max_sample_size = 100; # size of sample elements
 my $sample_space = $ARGV[0]; #seconds between samples
 # my $first_ema = $ARGV[1]; #1ema size
 # my $second_ema = $ARGV[2]; #2ema size
@@ -269,7 +269,7 @@ while (1)
 							}
 							
 							# print "$key $delta $average_size\n";
-							if (!(($delta >= 0) && ($delta <= 1.3)))
+							if (!(($delta >= 0) && ($delta <= 1.5)))
 							{
 								#delta is not in limit
 								$big_deviation = 1;
