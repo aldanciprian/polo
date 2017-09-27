@@ -14,6 +14,7 @@ use Digest::SHA qw(hmac_sha512_hex);
 use Switch;
 use File::Basename;
 use DBI;
+use Devel::StackTrace;
 use Poloniex;
 
 
@@ -32,10 +33,11 @@ my $crt_tstmp = 0; # the tstmp of the current order
 my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
-my $btc_balance = 0.00001; # the ammount in BTC
+my $btc_balance = 0.00011; # the ammount in BTC
 my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
-my $wining_procent = 1.1; # the procent where we sell
+# my $wining_procent = 1.1; # the procent where we sell
+my $wining_procent = 0.011; # the procent where we sell - case 2
 my $wining_procent_divided = $wining_procent / 100; # the procent where we sell
 my $down_delta_procent_threshold =  0.19; # the procent from max win down
 my $basename = basename($0,".pl");
@@ -43,6 +45,7 @@ my $sample_minutes = 5; # number of minutes between each sample
 my $max_distance =  ($sample_minutes*60)+ 60; # maximum distance between 2 samples in seconds
 my $min_distance =  ($sample_minutes*60) - 60; # minimum distance between 2 samples in seconds
 
+my $crt_iteration = 0;
 
 my $filename_status= $basename."_status.ctrl";
 my $filename_status_h;
@@ -167,7 +170,7 @@ foreach (sort (keys(%delta_generic_list)) )
 {
 		my $key = $_;
 		my $size = @{$delta_generic_list{$key}};
-		calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key);
+		calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key,1);
 }
 
 
@@ -180,7 +183,8 @@ while (1)
 	my $buy_next = "WRONG";
 	my $execute_crt_tstmp = timestamp();
 
-	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";		
+	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$  $crt_iteration ======================\n";		
+	$crt_iteration++;
 
 	
 	# watchdog
@@ -226,7 +230,7 @@ while (1)
 				# print Dumper %delta_generic_list;
 				my $size = @{$delta_generic_list{$key}};
 				# print "$key sample list size is $size \n";
-				calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key);								
+				calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key,0);								
 
 				# here we make the decision
 				
@@ -242,7 +246,7 @@ while (1)
 						for (my $i = 0; $i < $average_size; $i++) 
 						{
 									my $last_price = $average_delta_generic_list{$key}[$i];
-									# print "$key $last_price \n";
+									# print "$key $last_price $average_size \n";
 									$sum += $last_price;
 						}			
 						
@@ -264,8 +268,8 @@ while (1)
 								$delta = ( ( $sum - $last_average ) * 100 ) / $last_average;								
 							}
 							
-							print "$key $delta \n";
-							if (!(($delta >= 0.1) && ($delta <= 3)))
+							# print "$key $delta $average_size\n";
+							if (!(($delta >= 0) && ($delta <= 1.3)))
 							{
 								#delta is not in limit
 								$big_deviation = 1;
@@ -283,19 +287,19 @@ while (1)
 
 						my $current_price = get_last($delta_generic_list{$key}[0]);
 						my $current_deviation = 0;
-						print "$key $current_price $average_delta_generic_list{$key}[-1] \n";
-						if ( $current_price > $average_delta_generic_list{$key}[-1] )
+						# print "$key $current_price ".print_number($sum)." \n";
+						if ( $current_price > $sum )
 						{
 							#the price is above average
 							next;
 						}
 						
-						$current_deviation = ( ( $average_delta_generic_list{$key}[-1] - $current_price ) * 100 )  / $current_price;
+						$current_deviation = ( ( $sum - $current_price ) * 100 )  / $current_price;
 						
 						my %elem_potential;
 						$elem_potential{'ticker'} = $key;
 						$elem_potential{'deviation'} = $current_deviation;
-						print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price \n";
+						# print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price $sum\n";
 						push @potential_buyers , \%elem_potential;
 					} # good ticker
 				}
@@ -321,7 +325,7 @@ while (1)
 
 	if ( $max_dev > 0 )
 	{
-		print "The ticker to buy next is $max_dev_elem{'ticker'} $max_dev_elem{'deviation'} \n";
+		print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
 		$buy_next = $max_dev_elem{'ticker'};
 	}
 	
@@ -348,6 +352,8 @@ while (1)
 						print "Order $crt_order_number is pending.Wait for finalization.\n";
 						# print Dumper $polo_wrapper->get_open_orders("all");						
 						$decoded_json = $polo_wrapper->get_open_orders("all");
+						# $decoded_json = $polo_wrapper->get_open_orders($crt_pair);
+						# $decoded_json = $polo_wrapper->get_open_orders("BTC_NXC");						
 						# print "ref is ".ref($decoded_json)." \n";
 						# print Dumper $decoded_json;
 						foreach (@{$decoded_json->{$crt_pair}})
@@ -396,6 +402,7 @@ while (1)
 							if ( $buy_timeout == 15 )
 							{
 								# cancel the order and go back to buying
+								print "Timeout on the order cancel the order and go back to buying ! \n";
 								$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
 								#delete the last line from the status file
 								open($filename_status_h,"+<$filename_status") or die;
@@ -431,7 +438,7 @@ while (1)
 
 							if ( $price > 0.00001000 )
 							{
-								$price = $price - 0.00000010;								
+								$price = $price - 0.00000005;								
 							}
 							else
 							{
@@ -446,7 +453,7 @@ while (1)
 							my $buy_ammount = $btc_balance / $price ;
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
 							$current_spike++;
-							print "amount to buy $buy_ticker $buy_ammount $btc_balance ".print_number($price)." \n";
+							print "amount to buy $buy_ticker ".print_number($buy_ammount)." $btc_balance ".print_number($price)." \n";
 							$buy_timeout = 0;
 							$decoded_json = $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
@@ -604,7 +611,7 @@ while (1)
 					$sleep_interval = $step_wait_execute;
 		    }	
 	case 3 { 
-					print "SELLING \n";
+					print "SELLING $crt_pair\n";
 					my $sell_ticker = $crt_pair;
 					my $order_is_not_complete = 0;
 					$sell_ticker =~ s/BTC_(.*)/$1/g ;
@@ -613,7 +620,8 @@ while (1)
 					my $ticker_status = $current_list{$sell_ticker};
 					$ticker_status =~ s/\S*?\s+\S*?\s+\S*?\s+(\S*?)\s+.*/$1/g;
 					
-					$decoded_json = $polo_wrapper->get_open_orders("all");
+					# $decoded_json = $polo_wrapper->get_open_orders($crt_pair);
+					$decoded_json = $polo_wrapper->get_open_orders('all');					
 					# print "ref is ".ref($decoded_json)." \n";
 					# print Dumper $decoded_json;
 					foreach (@{$decoded_json->{$crt_pair}})
@@ -997,7 +1005,7 @@ sub get_samples()
 			$temp_tstmp =~ s/:/-/g;
 			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
 			my $array_size = @{$output_hash->{$ticker}};
-			if ( $array_size > $max_average_size )
+			if ( $array_size > $max_sample_size )
 			{
 				# we have read enough
 				$found_tstmp = 0;				
@@ -1112,32 +1120,88 @@ sub calculate_average()
 	my $array_size =  shift;
 	my $output_hash = shift;
 	my $ticker = shift;
+	my $init = shift;
 	
 	my $ema_1 = 0;
 	my $ema_2 = 0;
 	my $average = 0;	
 	my $ema_signal = 0;	
 	
-	my $sum = 0;
-	for (my $i = 0; $i < $array_size; $i++) 
+	if ( $init == 1 )
 	{
-				my $last_price = get_last($array->[$i]);
-				# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
-				$sum += $last_price;
-	}			
-	
-	#average 
-	$sum = $sum / $array_size;
-	
-	push @{$output_hash->{$ticker}} , $sum;	
-	
-	my $output_size = @{$output_hash->{$ticker}};
-	if  ( $output_size > $max_average_size )
+		# print "$ticker calculate average at init $array_size\n";
+		if ( $array_size > $max_average_size )
+		{
+			for (my $j = 0; $j < $max_average_size; $j++) 		
+			{
+				my $sum = 0;
+
+				for (my $i = $j; $i < (($array_size - $max_average_size)+$j); $i++) 
+				{
+							# print " i is $ticker $i \n";				
+							my $last_price = get_last($array->[$i]);
+							# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
+							$sum += $last_price;
+				}			
+				
+				#average 
+				$sum = $sum / (($array_size - $max_average_size));
+				
+				push @{$output_hash->{$ticker}} , $sum;	
+				
+				my $output_size = @{$output_hash->{$ticker}};
+				if  ( $output_size > $max_average_size )
+				{
+					#remove the oldest element;
+					shift @{$output_hash->{$ticker}};
+				}						
+			}
+		}
+		else
+		{
+			my $sum = 0;
+			for (my $i = 0; $i < ($array_size - $max_average_size); $i++) 
+			{
+						my $last_price = get_last($array->[$i]);
+						# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
+						$sum += $last_price;
+			}			
+			
+			#average 
+			$sum = $sum / ($array_size - $max_average_size);
+			
+			push @{$output_hash->{$ticker}} , $sum;	
+			
+			my $output_size = @{$output_hash->{$ticker}};
+			if  ( $output_size > $max_average_size )
+			{
+				#remove the oldest element;
+				shift @{$output_hash->{$ticker}};
+			}			
+		}
+	}
+	else
 	{
-		#remove the oldest element;
-		shift @{$output_hash->{$ticker}};
-	}		
-	
+		my $sum = 0;
+		for (my $i = 0; $i < ($array_size - $max_average_size); $i++) 
+		{
+					my $last_price = get_last($array->[$i]);
+					# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
+					$sum += $last_price;
+		}			
+		
+		#average 
+		$sum = $sum / ($array_size - $max_average_size);
+		
+		push @{$output_hash->{$ticker}} , $sum;	
+		
+		my $output_size = @{$output_hash->{$ticker}};
+		if  ( $output_size > $max_average_size )
+		{
+			#remove the oldest element;
+			shift @{$output_hash->{$ticker}};
+		}		
+	}
 }
 
 sub update_average()
@@ -1148,7 +1212,7 @@ sub update_average()
 	my $ticker = shift;
 
 	my $sum = 0;
-	for (my $i = 0; $i < $array_size; $i++) 
+	for (my $i = 0; $i < ($array_size - $max_average_size); $i++) 
 	{
 				my $last_price = get_last($array->[$i]);
 				$sum += $last_price;

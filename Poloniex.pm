@@ -9,6 +9,7 @@ use WWW::Curl::Easy;
 use Test::JSON;
 use Data::Dumper;               # Perl core module
 use Scalar::Util 'blessed';
+use Devel::StackTrace;
 
 sub new {
  my $class = shift;
@@ -65,6 +66,7 @@ sub query {
 		{
 			if ( exists($dec->{'error'} ) )
 			{
+				print Devel::StackTrace->new()->as_string();			
 				die "A logical error happened: $dec->{'error'}\n";
 			}
 		}
