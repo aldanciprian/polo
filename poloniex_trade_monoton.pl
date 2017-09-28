@@ -60,7 +60,7 @@ my $filename_average_h;
 my $sleep_interval = 10; # sleep interval in seconds , the default
 my $step_wait_execute = 10; # number of seconds to wait until verify if the order is executed
 my $step_wait_selling = 10;
-my $step_wait_sell_execute = 30;
+my $step_wait_sell_execute = 10;
 my $step_sampling = 10; # number of seconds between samples when deciding to buy
 my $step_sampling_ctr = 0; # counter for average samplings
 my $step_sampling_ctr_size = (280 / $step_sampling); # counter for average samplings
@@ -225,6 +225,7 @@ while (1)
 			# #get a 1 day delta trend
 			# get_samples_days($_,1,$crtTime,\%delta_1d_list);							
 
+
 			if ( defined $delta_generic_list{$key} )	
 			{
 				# print Dumper %delta_generic_list;
@@ -238,6 +239,12 @@ while (1)
 				# print "$key average size $average_size \n";
 				if ( $average_size > ($max_average_size - 1 ) )
 				{
+					# print print_number(get_baseVolume($delta_generic_list{$key}[0]))." $key \n";
+					if ( get_baseVolume($delta_generic_list{$key}[0]) < 100 )
+					{
+						#the volume is to low
+						$good_ticker = 0;
+					}				
 					if ( $good_ticker == 1 )
 					{
 						#calculcate the average of all the averages
@@ -269,7 +276,7 @@ while (1)
 							}
 							
 							# print "$key $delta $average_size\n";
-							if (!(($delta >= 0) && ($delta <= 1.5)))
+							if (!(($delta >= 0) && ($delta <= 1.8)))
 							{
 								#delta is not in limit
 								$big_deviation = 1;
@@ -673,6 +680,22 @@ while (1)
 						$delta_procent = ( $delta_procent * 100 ) / $crt_price; 
 						}
 						print "$execute_crt_tstmp Order is not completed ! delta is $delta_procent %  $crt_price  $ticker_status \n";	
+						if ( $delta_procent < -15 )						
+						{
+							# Cancel sell order
+							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
+							# FORCE a sell							
+							my $latest_price = $crt_price + 2;
+							$decoded_json = $polo_wrapper->sell("BTC_$sell_ticker",$latest_price,$crt_ammount);
+							$crt_order_number = $decoded_json->{'orderNumber'};
+							# print Dumper $decoded_json;
+							my $btc_after_sell = $latest_price * $crt_ammount;
+							$btc_after_sell = $btc_after_sell - ( $btc_after_sell * 0.0015 );
+							print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
+							print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+							close $filename_status_h;							
+						}
 						$sleep_interval = $step_wait_sell_execute;							
 					}					
 			}

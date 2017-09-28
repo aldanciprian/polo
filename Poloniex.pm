@@ -136,27 +136,28 @@ sub get_balances() {
 
 
 sub get_open_orders() { # Returns array of open order hashes
- $self = shift; $pair = shift; 
+ $self = shift; $pair = shift;
  my $ret = $self->query(
   {
    'command' => 'returnOpenOrders',
    'currencyPair' => uc($pair)
   }
  );
-
- if ( $ret == false )
+ if  ( $ret == false )
  {
-	 return $self->query(
-	  {
-	   'command' => 'returnOpenOrders',
-	   'currencyPair' => uc($pair)
-	  }
-	 );
+  print "RETRY get_open_orders \n";
+	$ret = $self->query(
+		{
+		 'command' => 'returnOpenOrders',
+		 'currencyPair' => uc($pair)
+		}
+	 ); 
+	 if ( $ret == false )
+	 {
+			die " get_open_orders twice failed \n";
+	 }
  }
- else
- {
-	return $ret;
- }
+ return $ret;
 }
 
 sub get_my_trade_history() {
