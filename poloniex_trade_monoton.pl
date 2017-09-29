@@ -690,7 +690,7 @@ while (1)
 							print "procent higher then 7% we need to force a selll $delta_procent ! \n";
 							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
 							# FORCE a sell							
-							my $latest_price = $crt_price + 2;
+							my $latest_price = $crt_price + 0.00000001;
 							$decoded_json = $polo_wrapper->sell("BTC_$sell_ticker",$latest_price,$crt_ammount);
 							$crt_order_number = $decoded_json->{'orderNumber'};
 							# print Dumper $decoded_json;
