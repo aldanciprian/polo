@@ -37,7 +37,7 @@ my $btc_balance = 0.0002; # the ammount in BTC
 my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
 # my $wining_procent = 1.1; # the procent where we sell
-my $wining_procent = 0.011; # the procent where we sell - case 2
+my $wining_procent = 0.009; # the procent where we sell - case 2
 my $wining_procent_divided = $wining_procent / 100; # the procent where we sell
 my $down_delta_procent_threshold =  0.19; # the procent from max win down
 my $basename = basename($0,".pl");
@@ -79,7 +79,7 @@ my $incline_treshold = 15; # procent where average goes over signal and up
 # SOLD 4
 
 my $max_average_size =  35; # size of average elements
-my $max_sample_size = 100; # size of sample elements
+my $max_sample_size = 135; # size of sample elements
 my $sample_space = $ARGV[0]; #seconds between samples
 # my $first_ema = $ARGV[1]; #1ema size
 # my $second_ema = $ARGV[2]; #2ema size
@@ -330,11 +330,15 @@ while (1)
 		}
 	}
 
-	if ( $max_dev > 0 )
+	if ( $max_dev > 1 )
 	{
 		print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
 		$buy_next = $max_dev_elem{'ticker'};
 	}
+	# else
+	# {
+		# print "Max dev is $max_dev $max_dev_elem{'ticker'} \n";
+	# }
 	
 	# sleep $sleep_interval;	
 	# next;
@@ -680,9 +684,10 @@ while (1)
 						$delta_procent = ( $delta_procent * 100 ) / $crt_price; 
 						}
 						print "$execute_crt_tstmp Order is not completed ! delta is $delta_procent %  $crt_price  $ticker_status \n";	
-						if ( $delta_procent < -15 )						
+						if ( $delta_procent < -7 )						
 						{
 							# Cancel sell order
+							print "procent higher then 7% we need to force a selll $delta_procent ! \n";
 							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
 							# FORCE a sell							
 							my $latest_price = $crt_price + 2;

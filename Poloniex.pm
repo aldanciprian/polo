@@ -10,10 +10,27 @@ use Test::JSON;
 use Data::Dumper;               # Perl core module
 use Scalar::Util 'blessed';
 use Devel::StackTrace;
+use Time::localtime;
+use Time::Piece;
+use Time::Seconds;
+use IPC::SysV qw(IPC_PRIVATE S_IRUSR S_IWUSR IPC_CREAT);
+use IPC::Semaphore;
+
+
+
+sub timestamp {
+   my $t = localtime;
+   return sprintf( "%04d-%02d-%02d_%02d-%02d-%02d",
+                  $t->year, $t->mon, $t->mday,
+                  $t->hour, $t->min, $t->sec );
+	# %Y-%m-%d_%H-%M-%S				  
+	# return localtime;
+}
 
 sub new {
  my $class = shift;
  my ( $api_key, $api_secret ) = @_;
+ 
  $self = bless {
   api_key => $api_key,
   api_secret => $api_secret,
@@ -26,7 +43,9 @@ sub new {
 sub query {
  my $self = shift;
  my %req = %{$_[0]};
-
+	
+ # sleep 250 miliseconds
+ # select(undef, undef, undef, 0.25);
  # API unique settings
  my $key = $self->{api_key};
  my $secret = $self->{api_secret};
@@ -35,7 +54,7 @@ sub query {
  $req{'nonce'} = time() =~ s/\.//r;
  my $data = \%req;
 
- # $req{'nonce'} += 6000000000;
+ $req{'nonce'} += 6000000000;
  # Generate the POST data string
  my $post_data = http_build_query($data, '', '&');
  my $sign = hmac_sha512_hex($post_data, $secret);
@@ -55,7 +74,9 @@ sub query {
  $curl->setopt( CURLOPT_WRITEDATA, \$response_body );
 
  # Send request
+ # print "SEND HTTP ".timestamp()." \n";
  my $retcode = $curl->perform;
+
  if ($retcode == 0) {
   # judge result and next action based on $response_code
   my $response_code = $curl->getinfo(CURLINFO_HTTP_CODE);
@@ -162,19 +183,37 @@ sub get_open_orders() { # Returns array of open order hashes
 
 sub get_my_trade_history() {
  $self = shift; $pair = shift;
- return $self->query(
+  my $ret = $self->query(
   {
    'command' => 'returnTradeHistory',
    'currencyPair' => uc($pair)
   }
  );
+ 
+	if  ( $ret == false )
+	{
+		print "RETRY get_my_trade_history \n";  
+		$ret = $self->query(
+			{
+			 'command' => 'returnTradeHistory',
+			 'currencyPair' => uc($pair)
+			}
+		 );	
+		
+		 if ( $ret == false )
+		 {
+				die " get_my_trade_history twice failed \n";
+		 }		
+	}
+ 
+ return $ret;
 }
 
 
 sub buy() {
  # print "In buy \n";
  my $self = shift; my $pair = shift; my $rate = shift; my $amount = shift;
- return $self->query(
+ my $ret = $self->query(
   {
    'command' => 'buy',
    'currencyPair' => uc($pair),
@@ -182,11 +221,30 @@ sub buy() {
    'amount' => $amount
   }
  );
+ 
+	if  ( $ret == false )
+	{
+		print "RETRY buy \n"; 
+		$ret = $self->query(
+			{
+			 'command' => 'buy',
+			 'currencyPair' => uc($pair),
+			 'rate' => $rate,
+			 'amount' => $amount
+			}
+		 );		
+	 if ( $ret == false )
+	 {
+			die " buy twice failed \n";
+	 }
+	}
+ 
+ return $ret;
 }
 
 sub sell() {
  $self = shift; my $pair = shift; my $rate = shift; my $amount = shift;
- return $self->query(
+   my $ret = $self->query(
   {
    'command' => 'sell',
    'currencyPair' => uc($pair),
@@ -194,17 +252,57 @@ sub sell() {
    'amount' => $amount
   }
  );
+ 
+	if  ( $ret == false )
+	{
+		print "RETRY sell \n"; 
+		
+		$ret = $self->query(
+			{
+			 'command' => 'sell',
+			 'currencyPair' => uc($pair),
+			 'rate' => $rate,
+			 'amount' => $amount
+			}
+		 );		
+		
+		 if ( $ret == false )
+		 {
+				die " sell  twice failed \n";
+		 }			
+		
+	}
+ 
+ return $ret;
 }
 
 sub cancel_order() {
  $self = shift; my $pair = shift; my $order_number = shift;
- return $self->query(
+  my $ret = $self->query(
   {
    'command' => 'cancelOrder',
    'currencyPair' => uc($pair),
    'orderNumber' => $order_number
   }
  );
+ 
+	if  ( $ret == false )
+	{
+		print "RETRY cancel_order \n"; 
+		$ret = $self->query(
+			{
+			 'command' => 'cancelOrder',
+			 'currencyPair' => uc($pair),
+			 'orderNumber' => $order_number
+			}
+		 );	
+		 if ( $ret == false )
+		 {
+				die " cancel_order twice failed \n";
+		 }		
+	}
+ 
+ return
 }
 
 sub withdraw() {

@@ -34,7 +34,7 @@ while (my $ref = $sth->fetchrow_hashref()) {
 $sth->finish();
 
 
-my $days =5 ;
+my $days =3 ;
 
 #delete records from all tables
 foreach (sort @symbols_list)
