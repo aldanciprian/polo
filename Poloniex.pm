@@ -87,7 +87,7 @@ sub query {
 		{
 			if ( exists($dec->{'error'} ) )
 			{
-				print Devel::StackTrace->new()->as_string();			
+				# print Devel::StackTrace->new()->as_string();			
 				print "A logical error happened: $dec->{'error'}\n";
 				if ( $dec->{'error'} eq "Order not found, or you are not the person who placed it." )
 				{
@@ -215,7 +215,17 @@ sub get_open_orders() { # Returns array of open order hashes
 	 ); 
 	 if ( $ret == 0 )
 	 {
-			die " get_open_orders twice failed \n";
+			print "RETRY2 get_open_orders \n";
+			$ret = $self->query(
+			{
+			 'command' => 'returnOpenOrders',
+			 'currencyPair' => uc($pair)
+			}
+		 ); 	 
+			 if ( $ret == 0 )
+			 {
+				die " get_open_orders three times failed \n";
+				}
 	 }
  }
  return $ret;
