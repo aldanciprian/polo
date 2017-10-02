@@ -64,12 +64,12 @@ sub query {
 
  #Set up browser
  my $curl = WWW::Curl::Easy->new;
- $curl->setopt( CURLOPT_RETURNTRANSFER, true );
+ $curl->setopt( CURLOPT_RETURNTRANSFER, 1 );
  $curl->setopt( CURLOPT_USERAGENT, 'Mozilla/4.0 (compatible; Poloniex Perl bot)' );
  $curl->setopt( CURLOPT_URL, $self->{trading_url} );
  $curl->setopt( CURLOPT_POSTFIELDS, $post_data );
  $curl->setopt( CURLOPT_HTTPHEADER, \@headers );
- $curl->setopt( CURLOPT_SSL_VERIFYPEER, FALSE );
+ $curl->setopt( CURLOPT_SSL_VERIFYPEER, 0 );
  my $response_body;
  $curl->setopt( CURLOPT_WRITEDATA, \$response_body );
 
@@ -89,15 +89,19 @@ sub query {
 			{
 				print Devel::StackTrace->new()->as_string();			
 				print "A logical error happened: $dec->{'error'}\n";
-				return false;
+				if ( $dec->{'error'} eq "Order not found, or you are not the person who placed it." )
+				{
+					return 1;
+				}
+				return 0;
 			}
 		}
    if (ref($dec) eq "HASH") { return \%{  $dec  }; } else { return  \@{  $dec  }; }
-  } else { return false; }
+  } else { return 0; }
  }
  # Error code, type of error, error message
  die "An error happened: $retcode ".$curl->strerror($retcode)." ".$curl->errbuf."\n";
- return false;
+ return 0;
 }
 
 sub retrieveJSON {
@@ -155,6 +159,42 @@ sub get_balances() {
  );
 }
 
+sub get_order_trades() { # Returns the order trades
+ $self = shift; $orderNumber= shift;
+ my $ret = $self->query(
+  {
+   'command' => 'returnOrderTrades',
+	 'orderNumber' => $orderNumber
+  }
+ ); 
+ 
+	if  ( $ret == 0 )
+	{
+		print "RETRY get_order_trades \n"; 
+		$ret = $self->query(
+		{
+		 'command' => 'returnOrderTrades',
+		 'orderNumber' => $orderNumber
+		}
+  	);		
+		
+		if  ( $ret == 0 )
+		{
+			print "RETRY2 get_order_trades \n"; 
+			$ret = $self->query(
+			{
+			 'command' => 'returnOrderTrades',
+			 'orderNumber' => $orderNumber
+			}
+			);		
+			 if ( $ret == 0 )
+			 {
+					die " get_order_trades twice failed \n";
+			 }		
+		}
+	}
+ return $ret;
+}
 
 sub get_open_orders() { # Returns array of open order hashes
  $self = shift; $pair = shift;
@@ -164,7 +204,7 @@ sub get_open_orders() { # Returns array of open order hashes
    'currencyPair' => uc($pair)
   }
  );
- if  ( $ret == false )
+ if  ( $ret == 0 )
  {
   print "RETRY get_open_orders \n";
 	$ret = $self->query(
@@ -173,7 +213,7 @@ sub get_open_orders() { # Returns array of open order hashes
 		 'currencyPair' => uc($pair)
 		}
 	 ); 
-	 if ( $ret == false )
+	 if ( $ret == 0 )
 	 {
 			die " get_open_orders twice failed \n";
 	 }
@@ -190,7 +230,7 @@ sub get_my_trade_history() {
   }
  );
  
-	if  ( $ret == false )
+	if  ( $ret == 0 )
 	{
 		print "RETRY get_my_trade_history \n";  
 		$ret = $self->query(
@@ -200,7 +240,7 @@ sub get_my_trade_history() {
 			}
 		 );	
 		
-		 if ( $ret == false )
+		 if ( $ret == 0 )
 		 {
 				die " get_my_trade_history twice failed \n";
 		 }		
@@ -222,7 +262,7 @@ sub buy() {
   }
  );
  
-	if  ( $ret == false )
+	if  ( $ret == 0 )
 	{
 		print "RETRY buy \n"; 
 		$ret = $self->query(
@@ -233,7 +273,7 @@ sub buy() {
 			 'amount' => $amount
 			}
 		 );		
-	 if ( $ret == false )
+	 if ( $ret == 0 )
 	 {
 			die " buy twice failed \n";
 	 }
@@ -253,7 +293,7 @@ sub sell() {
   }
  );
  
-	if  ( $ret == false )
+	if  ( $ret == 0 )
 	{
 		print "RETRY sell \n"; 
 		
@@ -266,7 +306,7 @@ sub sell() {
 			}
 		 );		
 		
-		 if ( $ret == false )
+		 if ( $ret == 0 )
 		 {
 				die " sell  twice failed \n";
 		 }			
@@ -286,7 +326,7 @@ sub cancel_order() {
   }
  );
  
-	if  ( $ret == false )
+	if  ( $ret == 0 )
 	{
 		print "RETRY cancel_order \n"; 
 		$ret = $self->query(
@@ -296,13 +336,25 @@ sub cancel_order() {
 			 'orderNumber' => $order_number
 			}
 		 );	
-		 if ( $ret == false )
+		 if ( $ret == 0 )
 		 {
+			print "RETRY2 cancel_order \n"; 
+			$ret = $self->query(
+				{
+				 'command' => 'cancelOrder',
+				 'currencyPair' => uc($pair),
+				 'orderNumber' => $order_number
+				}
+			 );	
+
+				 if ( $ret == 0 )
+				 {
 				die " cancel_order twice failed \n";
+				}
 		 }		
 	}
  
- return
+ return $ret;
 }
 
 sub withdraw() {
