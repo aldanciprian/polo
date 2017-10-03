@@ -365,49 +365,52 @@ while (1)
 			$max_dev_elem{'ticker'} = $_->{'ticker'};
 		}
 	}
-
-	if ( $max_dev < 0.5 )
-	{
-		my $found_pair = 0;
-		$dbh->do("CREATE TABLE IF NOT EXISTS ACTIVE_PAIRS (pair VARCHAR(40) UNIQUE)");
-		my $sth = $dbh->prepare("select * from ACTIVE_PAIRS");
-		$sth->execute();
-		# print "ACTIVE_PAIRS table : \n";
-		while (my $ref = $sth->fetchrow_hashref()) {
-			# print "$ref->{'pair'} \n";
-		 if ( "BTC_$max_dev_elem{'ticker'}" eq $ref->{'pair'} )
-		 {
-			$found_pair = 1;
-			last;
-		 }
-		} 
-		$sth->finish();	
 	
-		if  ( $found_pair == 0 )
+	if ( $max_dev_elem{'ticker'} )
+	{
+		if ( $max_dev < 0.5 )
 		{
-			# we have found another pair active
-			# we can use this one
-			print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
-			$buy_next = $max_dev_elem{'ticker'};
-			
-			{ #print the average list
-			my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
-				for (my $i = 0; $i < $average_size; $i++) 
-				{
-					print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
-					use integer;
-					if ( ( $i % 10 ) == 0 )
+			my $found_pair = 0;
+			$dbh->do("CREATE TABLE IF NOT EXISTS ACTIVE_PAIRS (pair VARCHAR(40) UNIQUE)");
+			my $sth = $dbh->prepare("select * from ACTIVE_PAIRS");
+			$sth->execute();
+			# print "ACTIVE_PAIRS table : \n";
+			while (my $ref = $sth->fetchrow_hashref()) {
+				# print "$ref->{'pair'} \n";
+			 if ( "BTC_$max_dev_elem{'ticker'}" eq $ref->{'pair'} )
+			 {
+				$found_pair = 1;
+				last;
+			 }
+			} 
+			$sth->finish();	
+		
+			if  ( $found_pair == 0 )
+			{
+				# we have found another pair active
+				# we can use this one
+				print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
+				$buy_next = $max_dev_elem{'ticker'};
+				
+				{ #print the average list
+				my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
+					for (my $i = 0; $i < $average_size; $i++) 
 					{
-						print "\n";
+						print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
+						use integer;
+						if ( ( $i % 10 ) == 0 )
+						{
+							print "\n";
+						}
 					}
+					print "\n";
 				}
-				print "\n";
+				
 			}
-			
-		}
-		else
-		{
-			print "This ticker is allready active $max_dev_elem{'ticker'} $max_dev_elem{'deviation'} %\n";
+			else
+			{
+				print "This ticker is allready active $max_dev_elem{'ticker'} $max_dev_elem{'deviation'} %\n";
+			}
 		}
 	}
 	# else
