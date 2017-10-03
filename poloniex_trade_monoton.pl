@@ -46,6 +46,7 @@ my $sample_minutes = 5; # number of minutes between each sample
 my $max_distance =  ($sample_minutes*60)+ 60; # maximum distance between 2 samples in seconds
 my $min_distance =  ($sample_minutes*60) - 60; # minimum distance between 2 samples in seconds
 
+my $nr_trend_samples = 3; # number of trend samples on the average array
 my $crt_iteration = 0;
 
 my $filename_status= $basename."_status.ctrl";
@@ -121,6 +122,11 @@ my %average_delta_generic_list;
 
 my %delta_1d_list;
 
+my @range = ( 1 .. 60 );
+my $random_number = $range[rand(@range)];
+print basename($0,".pl")." Sleep $random_number seconds \n";
+sleep ($random_number);
+
 
 
 my @symbols_list;
@@ -128,7 +134,7 @@ my @symbols_list;
 my $database="poloniex";
 my $hostname="localhost";
 my $user="ciprian";
-
+`./clean_db.pl`;
 # Connect to the database.
 my $dbh = DBI->connect("DBI:mysql:database=$database;host=$hostname","ciprian", "ciprian", {'RaiseError' => 1});
 # now retrieve data from the table.
@@ -282,13 +288,13 @@ while (1)
 							}
 							
 							# print "$key $delta $average_size\n";
-							if (!(($delta >= 0) && ($delta <= 1.8)))
+							if (!(($delta >= 0) && ($delta <= 2)))
 							{
 								#delta is not in limit
 								$big_deviation = 1;
 								last;
 							}
-						}			
+						}
 						
 						if ( $big_deviation == 1 )
 						{
@@ -297,7 +303,31 @@ while (1)
 							# print "deviation is to big $key $big_deviation \n";
 							next;
 						}
-
+						
+						# check the trend of the average
+						# get the size of the array and calculate the distance between two trend samples
+						# my $raise_trend = 1;
+						# my $distance_trend_samples = 0;
+						# {
+							# use integer;
+							# $distance_trend_samples = $average_size / $nr_trend_samples;
+						# }
+						# for (my $i = 0; $i < ($average_size - $distance_trend_samples); $i=$i+$distance_trend_samples) 
+						# {
+							# if ( $average_delta_generic_list{$key}[$i] > $average_delta_generic_list{$key}[$i+$distance_trend_samples] )
+							# {
+								# this ticker doesn't have a raising trend
+								# $raise_trend = 0;
+								# last;
+							# }
+						# }
+						# if ($raise_trend == 0)
+						# {
+							# print not a raising trend
+							# check another ticker
+							# next;
+						# }
+						
 						my $current_price = get_last($delta_generic_list{$key}[0]);
 						my $current_deviation = 0;
 						# print "$key $current_price ".print_number($sum)." \n";
@@ -336,7 +366,7 @@ while (1)
 		}
 	}
 
-	if ( $max_dev > 1 )
+	if ( $max_dev < 0.5 )
 	{
 		my $found_pair = 0;
 		$dbh->do("CREATE TABLE IF NOT EXISTS ACTIVE_PAIRS (pair VARCHAR(40) UNIQUE)");
@@ -359,6 +389,21 @@ while (1)
 			# we can use this one
 			print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
 			$buy_next = $max_dev_elem{'ticker'};
+			
+			{ #print the average list
+			my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
+				for (my $i = 0; $i < $average_size; $i++) 
+				{
+					print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
+					use integer;
+					if ( ( $i % 10 ) == 0 )
+					{
+						print "\n";
+					}
+				}
+				print "\n";
+			}
+			
 		}
 		else
 		{
@@ -652,6 +697,7 @@ while (1)
 						{
 							# Cancel sell order
 							print "loosing procent higher then $delta_procent_force_sell we need to force a selll $delta_procent ! \n";
+							print "Cancel order $crt_order_number \n";
 							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
 							sleep(20);
 							# FORCE a sell							
