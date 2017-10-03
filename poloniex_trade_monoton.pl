@@ -36,8 +36,9 @@ my $current_spike = 0; # the current number of buy/sell
 my $btc_balance = 0.00011; # the ammount in BTC
 my @queue_pairs_lists; # list with all samplings
 my $queue_pairs_lists_size = 30; # size of the list with all samplings
+my $delta_procent_force_sell = -5; # the procent where we force the sell
 # my $wining_procent = 1.1; # the procent where we sell
-my $wining_procent = 0.008; # the procent where we sell - case 2
+my $wining_procent = 0.011; # the procent where we sell - case 2
 my $wining_procent_divided = $wining_procent / 100; # the procent where we sell
 my $down_delta_procent_threshold =  0.19; # the procent from max win down
 my $basename = basename($0,".pl");
@@ -341,8 +342,10 @@ while (1)
 		$dbh->do("CREATE TABLE IF NOT EXISTS ACTIVE_PAIRS (pair VARCHAR(40) UNIQUE)");
 		my $sth = $dbh->prepare("select * from ACTIVE_PAIRS");
 		$sth->execute();
+		# print "ACTIVE_PAIRS table : \n";
 		while (my $ref = $sth->fetchrow_hashref()) {
-		 if ( $max_dev_elem{'ticker'} eq $ref->{'pair'} )
+			# print "$ref->{'pair'} \n";
+		 if ( "BTC_$max_dev_elem{'ticker'}" eq $ref->{'pair'} )
 		 {
 			$found_pair = 1;
 			last;
@@ -431,10 +434,6 @@ while (1)
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
 							close $filename_status_h;			
-
-							print "INSERT INTO ACTIVE_PAIRS (pair) VALUES ('$crt_pair') \n";
-							$dbh->do("INSERT INTO ACTIVE_PAIRS (pair) VALUES ('$crt_pair')");
-							
 						}
 						else
 						{
@@ -460,9 +459,15 @@ while (1)
 									}
 								close $filename_status_h;
 								
+								
+								
 								#wait 40 seconds to cancel the order
 								sleep 40;						
-
+								
+								print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
+								$dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
+								
+								
 								if ( $decoded_json != 1 )
 								{
 									print "We have to sell the partial BUY $crt_pair !\n";
@@ -487,7 +492,7 @@ while (1)
 									open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 									print $filename_status_h "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
 									close $filename_status_h;	
-									$dbh->do("INSERT INTO ACTIVE_PAIRS (pair) VALUES ('$crt_pair')");									
+									
 								}
 							}
 						}
@@ -496,6 +501,8 @@ while (1)
 					{
 						# there is no order
 						# print "there is no order \n";
+						# print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
+						# $dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");						
 						my $buy_ticker = $buy_next;
 						if ( "BTC_$buy_ticker" eq $crt_pair )
 						{
@@ -523,10 +530,14 @@ while (1)
 								print "Something is wrong with the price $buy_ticker $price !!!!\n";
 								last;
 							}
+							print "INSERT INTO ACTIVE_PAIRS (pair) VALUES ('BTC_$buy_ticker') \n";
+							$dbh->do("INSERT INTO ACTIVE_PAIRS (pair) VALUES ('BTC_$buy_ticker')");
+							
 							my $buy_ammount = $btc_balance / $price ;
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
 							$current_spike++;
 							print "amount to buy $buy_ticker ".print_number($buy_ammount)." $btc_balance ".print_number($price)." \n";
+							
 							$buy_timeout = 0;
 							$decoded_json = $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
@@ -538,6 +549,7 @@ while (1)
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h  "$current_spike $execute_crt_tstmp BUYING BTC_$buy_ticker ".sprintf("%0.8f",$price)." $buy_ammount $crt_order_number $btc_balance \n";
 							close $filename_status_h;
+
 							
 							$sleep_interval = $step_wait_selling;
 						}
@@ -617,6 +629,7 @@ while (1)
 						open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 						print $filename_status_h "$current_spike $crt_tstmp SOLD $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$sell_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
 						close $filename_status_h;	
+						print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
 						$dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
 					}
 					else
@@ -635,10 +648,10 @@ while (1)
 						$delta_procent = ( $delta_procent * 100 ) / $crt_price; 
 						}
 						print "$execute_crt_tstmp Order is not completed ! delta is $delta_procent %  $crt_price  $ticker_status \n";	
-						if ( $delta_procent < -4 )						
+						if ( $delta_procent < $delta_procent_force_sell )						
 						{
 							# Cancel sell order
-							print "procent higher then 4% we need to force a selll $delta_procent ! \n";
+							print "loosing procent higher then $delta_procent_force_sell we need to force a selll $delta_procent ! \n";
 							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
 							sleep(20);
 							# FORCE a sell							
@@ -654,10 +667,13 @@ while (1)
 							close $filename_status_h;							
 							
 							#wait for the force sell to get executed
-							sleep(50);
-							# cancel the force sell because it will be recreated on the next iteration
-							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
-							sleep(20);	
+							# sleep(50);
+							# print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
+							# $dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
+							
+							# # cancel the force sell because it will be recreated on the next iteration
+							# $polo_wrapper->cancel_order($crt_pair,$crt_order_number);
+							# sleep(20);	
 						}
 						$sleep_interval = $step_wait_sell_execute;							
 					}					
@@ -778,6 +794,13 @@ sub get_state_machine {
 			{
 				$has_pending_order = 1;
 			}
+			# if ( ( $crt_order_number == 0 )&& ($crt_price == 0) )
+			# {
+				# # this is the end of a cycle
+				# #force the deletion of the last used pair
+				# print "force the deletion : delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
+				# $dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
+			# }
 		}
 	}
 	#get state machine
