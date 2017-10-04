@@ -34,7 +34,7 @@ my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
 my $btc_balance = 0.00011; # the ammount in BTC
 my $delta_procent_force_sell = -9; # the procent where we force the sell
-my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
+my $max_average_deviation = 2.2; # the procent of maximum average deviation that we allow
 my $max_dev_size = 3.3; # the maximum procent of deviation of the current price to the middle of the average
 my $wining_procent = 0.012; # the procent where we sell - case 2
 
@@ -76,7 +76,6 @@ sub get_pair_list;
 sub get_samples;
 sub update_samples;
 sub calculate_average;
-sub update_average;
 sub trim_list;
 sub print_number;
 
@@ -147,14 +146,6 @@ print "=========  end initialize samples ".timestamp()." \n";
 # set lists to a specific maximum size
 trim_list(\%delta_generic_list,$max_sample_size);
 
-foreach (sort (keys(%delta_generic_list)) )
-{
-		my $key = $_;
-		my $size = @{$delta_generic_list{$key}};
-		calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key,1);
-}
-
-
 #get an object of the  Poloniex.pm class
 my $polo_wrapper = Poloniex_new->new($apikey,$sign);
 
@@ -190,94 +181,105 @@ while (1)
 			{
 				# print Dumper %delta_generic_list;
 				my $size = @{$delta_generic_list{$key}};
-				# print "$key sample list size is $size \n";
-				calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key,0);								
-			}
-		}
-	}
-	foreach (sort @symbols_list)
-	{
-		# here we make the decision
-		my $key = $_;		
-		my $good_ticker = 1;
-		
-		my $average_size = @{$average_delta_generic_list{$key}};
-		# print "$key average size $average_size \n";
-		if ( $average_size > ($max_average_size - 1 ) )
-		{
-			# print print_number(get_baseVolume($delta_generic_list{$key}[0]))." $key \n";
-			if ( get_baseVolume($delta_generic_list{$key}[0]) < 100 )
-			{
-				#the volume is to low
-				$good_ticker = 0;
-			}				
-			if ( $good_ticker == 1 )
-			{
-				#calculcate the average of all the averages
-				my $sum = 0;
-				# print "good ticker $key \n";
-				for (my $i = 0; $i < $average_size; $i++) 
+				if ( $size >= $max_sample_size )
 				{
-							my $last_price = $average_delta_generic_list{$key}[$i];
-							# print "$key $last_price $average_size \n";
-							$sum += $last_price;
-				}			
-				
-				#average 
-				$sum = $sum / $average_size;	
-		
-				# there should not be a very big deviation
-				my $big_deviation = 0;
-				for (my $i = 0; $i < $average_size; $i++) 
-				{
-					my $delta = 0;
-					my $last_average = $average_delta_generic_list{$key}[$i];
-					if ( $last_average >= $sum )
-					{
-						$delta = ( ( $last_average - $sum ) * 100 ) / $sum;
-					}
-					else
-					{
-						$delta = ( ( $sum - $last_average ) * 100 ) / $last_average;								
-					}
+					#print "$key sample list size is $size \n";
+					calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key,0);								
 					
-					# print "$key $delta $average_size\n";
-					if (!(($delta >= 0) && ($delta <= $max_average_deviation)))
+					# here we make the decision
+					my $key = $_;		
+					my $good_ticker = 1;
+
+					if ( defined $average_delta_generic_list{$key} )
 					{
-						#delta is not in limit
-						$big_deviation = 1;
-						last;
-					}
-				}
-				
-				if ( $big_deviation == 1 )
+						my $average_size = @{$average_delta_generic_list{$key}};
+						#print "$key average size $average_size \n";
+						if ( $average_size >= $max_average_size  )
+						{
+							# print print_number(get_baseVolume($delta_generic_list{$key}[0]))." $key \n";
+							if ( get_baseVolume($delta_generic_list{$key}[0]) < 100 )
+							{
+								#the volume is to low
+								$good_ticker = 0;
+							}				
+							if ( $good_ticker == 1 )
+							{
+								#calculcate the average of all the averages
+								my $sum = 0;
+								# print "good ticker $key \n";
+								for (my $i = 0; $i < $average_size; $i++) 
+								{
+									my $last_price = $average_delta_generic_list{$key}[$i];
+									# print "$key $last_price $average_size \n";
+									$sum += $last_price;
+								}			
+
+								#average 
+								$sum = $sum / $average_size;	
+
+								# there should not be a very big deviation
+								my $big_deviation = 0;
+								for (my $i = 0; $i < $average_size; $i++) 
+								{
+									my $delta = 0;
+									my $last_average = $average_delta_generic_list{$key}[$i];
+									if ( $last_average >= $sum )
+									{
+										$delta = ( ( $last_average - $sum ) * 100 ) / $sum;
+									}
+									else
+									{
+										$delta = ( ( $sum - $last_average ) * 100 ) / $last_average;								
+									}
+
+									# print "$key $delta $average_size\n";
+									if (!(($delta >= 0) && ($delta <= $max_average_deviation)))
+									{
+										#delta is not in limit
+										$big_deviation = 1;
+										last;
+									}
+								}
+
+								if ( $big_deviation == 1 )
+								{
+									# it has deviated to much
+									# skip this ticker
+									# print "deviation is to big $key $big_deviation \n";
+									next;
+								}
+
+
+								my $current_price = get_last($delta_generic_list{$key}[0]);
+								my $current_deviation = 0;
+								# print "$key $current_price ".print_number($sum)." \n";
+								if ( $current_price > $sum )
+								{
+									#the price is above average
+									next;
+								}
+
+								$current_deviation = ( ( $sum - $current_price ) * 100 )  / $current_price;
+
+								my %elem_potential;
+								$elem_potential{'ticker'} = $key;
+								$elem_potential{'deviation'} = $current_deviation;
+								# print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price $sum\n";
+								push @potential_buyers , \%elem_potential;
+							} # good ticker
+						} #average size list is max
+					}	#if defined average list				
+				} #if sample size is enough
+				else
 				{
-					# it has deviated to much
-					# skip this ticker
-					# print "deviation is to big $key $big_deviation \n";
-					next;
+					print "Not enough samples for $key $max_sample_size \n";
 				}
-				
-				
-				my $current_price = get_last($delta_generic_list{$key}[0]);
-				my $current_deviation = 0;
-				# print "$key $current_price ".print_number($sum)." \n";
-				if ( $current_price > $sum )
-				{
-					#the price is above average
-					next;
-				}
-				
-				$current_deviation = ( ( $sum - $current_price ) * 100 )  / $current_price;
-				
-				my %elem_potential;
-				$elem_potential{'ticker'} = $key;
-				$elem_potential{'deviation'} = $current_deviation;
-				# print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price $sum\n";
-				push @potential_buyers , \%elem_potential;
-			} # good ticker
-		}
-	} # foreach symbol
+			} #if defined generic list
+		} #if update added a new element
+	} # for each symbol
+
+		
+
 
 	my %max_dev_elem;
 	my $max_dev = 0;
@@ -317,27 +319,31 @@ while (1)
 				# we can use this one
 				print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
 				$buy_next = $max_dev_elem{'ticker'};
-				
-				# { #print the average list
-				# my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
-					# for (my $i = 0; $i < $average_size; $i++) 
-					# {
-						# print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
-						# use integer;
-						# if ( ( $i % 10 ) == 0 )
-						# {
-							# print "\n";
-						# }
-					# }
-					# print "\n";
-				# }
-				
 			}
 			else
 			{
 				print "This ticker is allready active $max_dev_elem{'ticker'} $max_dev_elem{'deviation'} %\n";
 			}
 		}
+		 { #print the average list
+			 my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
+			 my $sum  = 0;
+			 print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[0])." ";				 
+			 $sum += $average_delta_generic_list{$max_dev_elem{'ticker'}}[0];					 
+			 for (my $i = 1; $i < $average_size; $i++) 
+			 {
+				$sum += $average_delta_generic_list{$max_dev_elem{'ticker'}}[$i];
+				print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
+				use integer;
+				if ( ( $i % 10 ) == 0 )
+				 {
+					 print "\n";
+				 }
+			 }
+			 print "\n";
+			 print "Price ".get_last($delta_generic_list{$max_dev_elem{'ticker'}}[0])." \n";
+			 print "Sum is ".print_number( ($sum / $average_size) )." \n";
+		 }
 	}
 
 	
@@ -435,18 +441,14 @@ while (1)
 							
 								$decoded_json = $polo_wrapper->get_order_trades($crt_order_number);
 								print Dumper $decoded_json;
-								if ( $decoded_json->{'returnValue'} > 0 )
-								{
-									$decoded_json = $decoded_json->{'returnJson'};
-								}
-								else
+								if ( $decoded_json->{'returnValue'} <= 0 )
 								{
 									#repeat the iteration
 									last;
-								}							
+								}
 							
-								$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
-								if ( $decoded_json->{'returnValue'} <= 0 )
+								my $decoded_json_temp = $polo_wrapper->cancel_order($crt_pair,$crt_order_number);
+								if ( $decoded_json_temp->{'returnValue'} <= 0 )
 								{
 									#repeat the iteration
 									last;									
@@ -465,7 +467,7 @@ while (1)
 									}
 								close $filename_status_h;
 								
-								if ( $decoded_json->{'returnValue'} != 1 )
+								if ( $decoded_json->{'returnValue'} > 1 )
 								{
 									print "We have to sell the partial BUY $crt_pair !\n";
 									# we have partial buy
@@ -1139,132 +1141,48 @@ sub calculate_average()
 	my $array_size =  shift;
 	my $output_hash = shift;
 	my $ticker = shift;
-	my $init = shift;
 	
-	my $ema_1 = 0;
-	my $ema_2 = 0;
-	my $average = 0;	
-	my $ema_signal = 0;	
-	
-	if ( $init == 1 )
+	if ( defined $output_hash->{$ticker} )
 	{
-		# print "$ticker calculate average at init $array_size\n";
-		if ( $array_size > $max_average_size )
-		{
-			for (my $j = 0; $j < $max_average_size; $j++) 		
-			{
-				my $sum = 0;
-
-				for (my $i = $j; $i < (($array_size - $max_average_size)+$j); $i++) 
-				{
-							# print " i is $ticker $i \n";				
-							my $last_price = get_last($array->[$i]);
-							# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
-							$sum += $last_price;
-				}			
-				
-				#average 
-				if ($array_size == $max_average_size)
-				{
-					#just let update samples gather more data
-					return;
-				}		
-				$sum = $sum / (($array_size - $max_average_size));
-				
-				push @{$output_hash->{$ticker}} , $sum;	
-				
-				my $output_size = @{$output_hash->{$ticker}};
-				if  ( $output_size > $max_average_size )
-				{
-					#remove the oldest element;
-					shift @{$output_hash->{$ticker}};
-				}						
-			}
-		}
-		else
+	#clear the array
+	@{$output_hash->{$ticker}}=(); 
+	}		
+	
+	# print "$ticker calculate average at init $array_size\n";
+	if ( $array_size > $max_average_size )
+	{
+		for (my $j = 0; $j < $max_average_size; $j++) 		
 		{
 			my $sum = 0;
-			for (my $i = 0; $i < ($array_size - $max_average_size); $i++) 
+
+			for (my $i = $j; $i < (($array_size - $max_average_size)+$j); $i++) 
 			{
-						my $last_price = get_last($array->[$i]);
-						# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
-						$sum += $last_price;
+				# print " i is $ticker $i \n";				
+				my $last_price = get_last($array->[$i]);
+				# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
+				$sum += $last_price;
 			}			
-			
+
 			#average 
 			if ($array_size == $max_average_size)
 			{
 				#just let update samples gather more data
 				return;
-			}				
-			$sum = $sum / ($array_size - $max_average_size);
-			
+			}		
+			$sum = $sum / (($array_size - $max_average_size));
+
 			push @{$output_hash->{$ticker}} , $sum;	
-			
+
 			my $output_size = @{$output_hash->{$ticker}};
 			if  ( $output_size > $max_average_size )
 			{
 				#remove the oldest element;
 				shift @{$output_hash->{$ticker}};
-			}			
+			}						
 		}
 	}
-	else
-	{
-		my $sum = 0;
-		for (my $i = 0; $i < ($array_size - $max_average_size); $i++) 
-		{
-					my $last_price = get_last($array->[$i]);
-					# print "$ticker $last_price ".get_tstmp($array->[$i])." \n";
-					$sum += $last_price;
-		}			
-		
-		#average 
-		if ($array_size == $max_average_size)
-		{
-			#just let update samples gather more data
-			return;
-		}			
-		$sum = $sum / ($array_size - $max_average_size);
-		
-		push @{$output_hash->{$ticker}} , $sum;	
-		
-		my $output_size = @{$output_hash->{$ticker}};
-		if  ( $output_size > $max_average_size )
-		{
-			#remove the oldest element;
-			shift @{$output_hash->{$ticker}};
-		}		
-	}
 }
 
-sub update_average()
-{
-	my $array = shift;
-	my $array_size =  shift;
-	my $output_hash = shift;
-	my $ticker = shift;
-
-	my $sum = 0;
-	for (my $i = 0; $i < ($array_size - $max_average_size); $i++) 
-	{
-				my $last_price = get_last($array->[$i]);
-				$sum += $last_price;
-	}			
-	
-	#average 
-	$sum = $sum / $array_size;	
-
-	push @{$output_hash->{$ticker}} , $sum;
-	
-	
-	my $output_size = @{$output_hash->{$ticker}};
-	if  ( $output_size > $max_average_size )
-	{
-		#remove the oldest element;
-		shift @{$output_hash->{$ticker}};
-	}	
-}
 
 sub print_number()
 {
