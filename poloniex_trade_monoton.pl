@@ -23,9 +23,8 @@ my $apikey = $ENV{'POLONIEX_APIKEY'};
 my $sign = $ENV{'POLONIEX_SIGN'};
 
 my $decoded_json;
-my $hashref_temp = 0;
 
-my $previous_price = 0;
+
 my $has_pending_order = 0; # bit to see if there is a pending order ot not
 my $crt_order_number = 0; # in case there is a pending order, this should express the order number
 my $crt_pair = 0; # the current pair in the order
@@ -34,17 +33,14 @@ my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
 my $btc_balance = 0.00011; # the ammount in BTC
-my @queue_pairs_lists; # list with all samplings
-my $queue_pairs_lists_size = 30; # size of the list with all samplings
-my $delta_procent_force_sell = -5; # the procent where we force the sell
-# my $wining_procent = 1.1; # the procent where we sell
-my $wining_procent = 0.011; # the procent where we sell - case 2
-my $wining_procent_divided = $wining_procent / 100; # the procent where we sell
-my $down_delta_procent_threshold =  0.19; # the procent from max win down
+my $delta_procent_force_sell = -9; # the procent where we force the sell
+my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
+my $max_dev_size = 3.3; # the maximum procent of deviation of the current price to the middle of the average
+my $wining_procent = 0.012; # the procent where we sell - case 2
+
+
 my $basename = basename($0,".pl");
-my $sample_minutes = 5; # number of minutes between each sample
-my $max_distance =  ($sample_minutes*60)+ 60; # maximum distance between 2 samples in seconds
-my $min_distance =  ($sample_minutes*60) - 60; # minimum distance between 2 samples in seconds
+
 
 my $nr_trend_samples = 3; # number of trend samples on the average array
 my $crt_iteration = 0;
@@ -52,27 +48,10 @@ my $crt_iteration = 0;
 my $filename_status= $basename."_status.ctrl";
 my $filename_status_h;
 
-# my $filename_selling= $basename."_selling.ctrl";
-# my $filename_selling_h;
-
-my $filename_average= $basename."_average.ctrl";
-my $filename_average_h;
-
 
 my $sleep_interval = 10; # sleep interval in seconds , the default
-my $step_wait_execute = 10; # number of seconds to wait until verify if the order is executed
-my $step_wait_selling = 10;
-my $step_wait_sell_execute = 10;
-my $step_sampling = 10; # number of seconds between samples when deciding to buy
-my $step_sampling_ctr = 0; # counter for average samplings
-my $step_sampling_ctr_size = (280 / $step_sampling); # counter for average samplings
-
-my $loosingProcent = 20; #the loss limit
-my $volumeRef = 70; # only pairs with more then x coin volume
 
 my $buy_timeout = 0; #if it doesn't buy...cancel the order
-
-my $incline_treshold = 15; # procent where average goes over signal and up
 
 
 # BUYING 1
@@ -94,12 +73,8 @@ sub timestamp;
 sub trim;
 sub get_state_machine;
 sub get_pair_list;
-sub get_next_buy_ticker;
-sub long_trend;
 sub get_samples;
-sub get_samples_days;
 sub update_samples;
-sub db2tstmp;
 sub calculate_average;
 sub update_average;
 sub trim_list;
@@ -119,22 +94,22 @@ sub get_isFrozen;
 
 my %delta_generic_list;
 my %average_delta_generic_list;
+my @symbols_list;
 
-my %delta_1d_list;
-
+#sleep a random of seconds so that is desyncroinsed from other instances
 my @range = ( 1 .. 60 );
 my $random_number = $range[rand(@range)];
 print basename($0,".pl")." Sleep $random_number seconds \n";
 sleep ($random_number);
 
 
-
-my @symbols_list;
-	
 my $database="poloniex";
 my $hostname="localhost";
 my $user="ciprian";
+
+#clean the db from old samples 
 `./clean_db.pl`;
+
 # Connect to the database.
 my $dbh = DBI->connect("DBI:mysql:database=$database;host=$hostname","ciprian", "ciprian", {'RaiseError' => 1});
 # now retrieve data from the table.
@@ -150,12 +125,6 @@ while (my $ref = $sth->fetchrow_hashref()) {
 }
 $sth->finish();		
 
-
-
-my $minute = 0;
-my $reminder = 0;
-my $endMinute	= 0;
-my $endTfTimeGeneric= 0;
 
 # watchdog
 my $filename_wdg = basename($0,".pl")."_wdg.txt";
@@ -186,8 +155,8 @@ foreach (sort (keys(%delta_generic_list)) )
 }
 
 
-
-my $polo_wrapper = Poloniex->new($apikey,$sign);
+#get an object of the  Poloniex.pm class
+my $polo_wrapper = Poloniex_new->new($apikey,$sign);
 
 
 while (1)
@@ -208,149 +177,105 @@ while (1)
 	
 	my $crtTime =   Time::Piece->strptime($execute_crt_tstmp,'%Y-%m-%d_%H-%M-%S');	
 
-	#populate the generic distance list
-
 	print "update $sample_space sec \n";
 
 	my @potential_buyers = ();
 	foreach (sort @symbols_list)
 	{
 		my $key = $_;		
-		my $good_ticker = 1;
+
 		if ( update_samples($_,$sample_space,$crtTime,\%delta_generic_list) == 1)
 		{
-			# my $long_trend_array = long_trend($key,$crtTime);
-			# if ( @{$long_trend_array} >=2 ) 
-			# {
-				# # print "trend $delta_generic_list{$key}[-1]->{'tstmp'} $delta_generic_list{$key}[-1]->{'last'} $long_trend_array->[0]->{'tstmp'} $long_trend_array->[0]->{'last'} $long_trend_array->[1]->{'tstmp'} $long_trend_array->[1]->{'last'} ";
-				# if ( (get_last($delta_generic_list{$key}[-1]) < $long_trend_array->[0]->{'last'} ) or ($long_trend_array->[0]->{'last'} < $long_trend_array->[1]->{'last'}) )  
-				# {
-					# # the trend is down
-					# # print " DOWN \n";
-					# next;
-				# }
-				# else
-				# {
-					# print " UP \n";			
-				# }
-			# }
-			# #get a 1 day delta trend
-			# get_samples_days($_,1,$crtTime,\%delta_1d_list);							
-
-
 			if ( defined $delta_generic_list{$key} )	
 			{
 				# print Dumper %delta_generic_list;
 				my $size = @{$delta_generic_list{$key}};
 				# print "$key sample list size is $size \n";
 				calculate_average(\@{$delta_generic_list{$key}},$size,\%average_delta_generic_list,$key,0);								
-
-				# here we make the decision
-				
-				my $average_size = @{$average_delta_generic_list{$key}};
-				# print "$key average size $average_size \n";
-				if ( $average_size > ($max_average_size - 1 ) )
-				{
-					# print print_number(get_baseVolume($delta_generic_list{$key}[0]))." $key \n";
-					if ( get_baseVolume($delta_generic_list{$key}[0]) < 100 )
-					{
-						#the volume is to low
-						$good_ticker = 0;
-					}				
-					if ( $good_ticker == 1 )
-					{
-						#calculcate the average of all the averages
-						my $sum = 0;
-						# print "good ticker $key \n";
-						for (my $i = 0; $i < $average_size; $i++) 
-						{
-									my $last_price = $average_delta_generic_list{$key}[$i];
-									# print "$key $last_price $average_size \n";
-									$sum += $last_price;
-						}			
-						
-						#average 
-						$sum = $sum / $average_size;	
-				
-						# there should not be a very big deviation
-						my $big_deviation = 0;
-						for (my $i = 0; $i < $average_size; $i++) 
-						{
-							my $delta = 0;
-							my $last_average = $average_delta_generic_list{$key}[$i];
-							if ( $last_average >= $sum )
-							{
-								$delta = ( ( $last_average - $sum ) * 100 ) / $sum;
-							}
-							else
-							{
-								$delta = ( ( $sum - $last_average ) * 100 ) / $last_average;								
-							}
-							
-							# print "$key $delta $average_size\n";
-							if (!(($delta >= 0) && ($delta <= 2)))
-							{
-								#delta is not in limit
-								$big_deviation = 1;
-								last;
-							}
-						}
-						
-						if ( $big_deviation == 1 )
-						{
-							# it has deviated to much
-							# skip this ticker
-							# print "deviation is to big $key $big_deviation \n";
-							next;
-						}
-						
-						# check the trend of the average
-						# get the size of the array and calculate the distance between two trend samples
-						# my $raise_trend = 1;
-						# my $distance_trend_samples = 0;
-						# {
-							# use integer;
-							# $distance_trend_samples = $average_size / $nr_trend_samples;
-						# }
-						# for (my $i = 0; $i < ($average_size - $distance_trend_samples); $i=$i+$distance_trend_samples) 
-						# {
-							# if ( $average_delta_generic_list{$key}[$i] > $average_delta_generic_list{$key}[$i+$distance_trend_samples] )
-							# {
-								# this ticker doesn't have a raising trend
-								# $raise_trend = 0;
-								# last;
-							# }
-						# }
-						# if ($raise_trend == 0)
-						# {
-							# print not a raising trend
-							# check another ticker
-							# next;
-						# }
-						
-						my $current_price = get_last($delta_generic_list{$key}[0]);
-						my $current_deviation = 0;
-						# print "$key $current_price ".print_number($sum)." \n";
-						if ( $current_price > $sum )
-						{
-							#the price is above average
-							next;
-						}
-						
-						$current_deviation = ( ( $sum - $current_price ) * 100 )  / $current_price;
-						
-						my %elem_potential;
-						$elem_potential{'ticker'} = $key;
-						$elem_potential{'deviation'} = $current_deviation;
-						# print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price $sum\n";
-						push @potential_buyers , \%elem_potential;
-					} # good ticker
-				}
 			}
-			# else
-			# {
-				# print "not defined \n";
-			# }
+		}
+	}
+	foreach (sort @symbols_list)
+	{
+		# here we make the decision
+		my $key = $_;		
+		my $good_ticker = 1;
+		
+		my $average_size = @{$average_delta_generic_list{$key}};
+		# print "$key average size $average_size \n";
+		if ( $average_size > ($max_average_size - 1 ) )
+		{
+			# print print_number(get_baseVolume($delta_generic_list{$key}[0]))." $key \n";
+			if ( get_baseVolume($delta_generic_list{$key}[0]) < 100 )
+			{
+				#the volume is to low
+				$good_ticker = 0;
+			}				
+			if ( $good_ticker == 1 )
+			{
+				#calculcate the average of all the averages
+				my $sum = 0;
+				# print "good ticker $key \n";
+				for (my $i = 0; $i < $average_size; $i++) 
+				{
+							my $last_price = $average_delta_generic_list{$key}[$i];
+							# print "$key $last_price $average_size \n";
+							$sum += $last_price;
+				}			
+				
+				#average 
+				$sum = $sum / $average_size;	
+		
+				# there should not be a very big deviation
+				my $big_deviation = 0;
+				for (my $i = 0; $i < $average_size; $i++) 
+				{
+					my $delta = 0;
+					my $last_average = $average_delta_generic_list{$key}[$i];
+					if ( $last_average >= $sum )
+					{
+						$delta = ( ( $last_average - $sum ) * 100 ) / $sum;
+					}
+					else
+					{
+						$delta = ( ( $sum - $last_average ) * 100 ) / $last_average;								
+					}
+					
+					# print "$key $delta $average_size\n";
+					if (!(($delta >= 0) && ($delta <= $max_average_deviation)))
+					{
+						#delta is not in limit
+						$big_deviation = 1;
+						last;
+					}
+				}
+				
+				if ( $big_deviation == 1 )
+				{
+					# it has deviated to much
+					# skip this ticker
+					# print "deviation is to big $key $big_deviation \n";
+					next;
+				}
+				
+				
+				my $current_price = get_last($delta_generic_list{$key}[0]);
+				my $current_deviation = 0;
+				# print "$key $current_price ".print_number($sum)." \n";
+				if ( $current_price > $sum )
+				{
+					#the price is above average
+					next;
+				}
+				
+				$current_deviation = ( ( $sum - $current_price ) * 100 )  / $current_price;
+				
+				my %elem_potential;
+				$elem_potential{'ticker'} = $key;
+				$elem_potential{'deviation'} = $current_deviation;
+				# print "Potential deviation $elem_potential{'ticker'} $elem_potential{'deviation'} % $current_price $sum\n";
+				push @potential_buyers , \%elem_potential;
+			} # good ticker
 		}
 	} # foreach symbol
 
@@ -368,7 +293,8 @@ while (1)
 	
 	if ( $max_dev_elem{'ticker'} )
 	{
-		if ( $max_dev < 0.5 )
+		print "max dev is $max_dev_elem{'ticker'} $max_dev_elem{'deviation'} \n";
+		if ( $max_dev > $max_dev_size )
 		{
 			my $found_pair = 0;
 			$dbh->do("CREATE TABLE IF NOT EXISTS ACTIVE_PAIRS (pair VARCHAR(40) UNIQUE)");
@@ -392,19 +318,19 @@ while (1)
 				print "The ticker to buy next is $max_dev_elem{'ticker'} - $max_dev_elem{'deviation'} % \n";
 				$buy_next = $max_dev_elem{'ticker'};
 				
-				{ #print the average list
-				my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
-					for (my $i = 0; $i < $average_size; $i++) 
-					{
-						print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
-						use integer;
-						if ( ( $i % 10 ) == 0 )
-						{
-							print "\n";
-						}
-					}
-					print "\n";
-				}
+				# { #print the average list
+				# my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
+					# for (my $i = 0; $i < $average_size; $i++) 
+					# {
+						# print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
+						# use integer;
+						# if ( ( $i % 10 ) == 0 )
+						# {
+							# print "\n";
+						# }
+					# }
+					# print "\n";
+				# }
 				
 			}
 			else
@@ -413,10 +339,7 @@ while (1)
 			}
 		}
 	}
-	# else
-	# {
-		# print "Max dev is $max_dev $max_dev_elem{'ticker'} \n";
-	# }
+
 	
 	# sleep $sleep_interval;	
 	# next;
@@ -439,11 +362,18 @@ while (1)
 					if ( $has_pending_order == 1 )
 					{
 						print "Order $crt_order_number is pending.Wait for finalization.\n";
-						# print Dumper $polo_wrapper->get_open_orders("all");						
+						
 						$decoded_json = $polo_wrapper->get_open_orders("all");
-						# $decoded_json = $polo_wrapper->get_open_orders($crt_pair);
-						# $decoded_json = $polo_wrapper->get_open_orders("BTC_NXC");						
-						# print "ref is ".ref($decoded_json)." \n";
+						if ( $decoded_json->{'returnValue'} > 0 )
+						{
+							$decoded_json = $decoded_json->{'returnJson'};
+						}
+						else
+						{
+							#repeat the iteration
+							last;
+						}
+						
 						# print Dumper $decoded_json;
 						foreach (@{$decoded_json->{$crt_pair}})
 						{
@@ -460,6 +390,16 @@ while (1)
 							
 							$decoded_json = $polo_wrapper->get_my_trade_history($crt_pair);
 							print Dumper $decoded_json;
+							if ( $decoded_json->{'returnValue'} > 0 )
+							{
+								$decoded_json = $decoded_json->{'returnJson'};
+							}
+							else
+							{
+								#repeat the iteration
+								last;
+							}
+							
 							my $total_btc = 0;
 							my $buy_ammount = 0;
 							foreach (@{$decoded_json})
@@ -471,7 +411,6 @@ while (1)
 									$buy_ammount += $applied_fee;
 								}
 							}
-							$sleep_interval = $step_wait_execute;
 							
 							#clear the selling file
 							# open(my $filename_selling_h, '>', $filename_selling) or warn "Could not open file '$filename_selling' $!";
@@ -491,12 +430,31 @@ while (1)
 							#after 20 cycles cancel the order
 							if ( $buy_timeout == 20 )
 							{
-								$decoded_json = $polo_wrapper->get_order_trades($crt_order_number);
-								print Dumper $decoded_json;
-							
 								# cancel the order and go back to buying
 								print "Timeout on the order cancel the order and go back to buying ! \n";
+							
+								$decoded_json = $polo_wrapper->get_order_trades($crt_order_number);
+								print Dumper $decoded_json;
+								if ( $decoded_json->{'returnValue'} > 0 )
+								{
+									$decoded_json = $decoded_json->{'returnJson'};
+								}
+								else
+								{
+									#repeat the iteration
+									last;
+								}							
+							
 								$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
+								if ( $decoded_json->{'returnValue'} <= 0 )
+								{
+									#repeat the iteration
+									last;									
+								}
+								print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
+								$dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
+
+								
 								#delete the last line from the status file
 								open($filename_status_h,"+<$filename_status") or die;
 									while (<$filename_status_h>) {
@@ -507,23 +465,14 @@ while (1)
 									}
 								close $filename_status_h;
 								
-								
-								
-								#wait 40 seconds to cancel the order
-								sleep 40;						
-								
-								print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
-								$dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
-								
-								
-								if ( $decoded_json != 1 )
+								if ( $decoded_json->{'returnValue'} != 1 )
 								{
 									print "We have to sell the partial BUY $crt_pair !\n";
 									# we have partial buy
 									# we need to sell that
 									my $total_btc = 0;
 									my $buy_ammount = 0;								
-									foreach (@{$decoded_json})
+									foreach (@{$decoded_json->{'returnJson'}})
 									{
 										my $applied_fee = $_->{'amount'} - ( $_->{'amount'} * $_->{'fee'});
 										$total_btc += $_->{'total'};
@@ -531,16 +480,11 @@ while (1)
 										$crt_price = $_->{'rate'};
 									}	
 									
-									#clear the selling file
-									# open(my $filename_selling_h, '>', $filename_selling) or warn "Could not open file '$filename_selling' $!";
-									# close $filename_selling_h;								
-									
 									# store the bought event
 									print "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";						
 									open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 									print $filename_status_h "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
 									close $filename_status_h;	
-									
 								}
 							}
 						}
@@ -560,6 +504,9 @@ while (1)
 						if ( $buy_ticker ne "WRONG" )
 						{
 							print "buy now \n";
+							print "INSERT INTO ACTIVE_PAIRS (pair) VALUES ('BTC_$buy_ticker') \n";
+							$dbh->do("INSERT INTO ACTIVE_PAIRS (pair) VALUES ('BTC_$buy_ticker')");
+							
 							# buy now
 							# write status file - last line
 							my $price = get_last($current_list{$buy_ticker});
@@ -578,8 +525,6 @@ while (1)
 								print "Something is wrong with the price $buy_ticker $price !!!!\n";
 								last;
 							}
-							print "INSERT INTO ACTIVE_PAIRS (pair) VALUES ('BTC_$buy_ticker') \n";
-							$dbh->do("INSERT INTO ACTIVE_PAIRS (pair) VALUES ('BTC_$buy_ticker')");
 							
 							my $buy_ammount = $btc_balance / $price ;
 							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
@@ -588,22 +533,23 @@ while (1)
 							
 							$buy_timeout = 0;
 							$decoded_json = $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
-							# $buy_ammount = $buy_ammount - ($buy_ammount * 0.0015);
-							 # print Dumper $polo_wrapper->buy("BTC_$buy_ticker",$price,$buy_ammount);
-							# print "Buying \n";
 							# print Dumper $decoded_json;
+							if ( $decoded_json->{'returnValue'} > 0 )
+							{
+								$decoded_json = $decoded_json->{'returnJson'};
+							}
+							else
+							{
+								#repeat the iteration
+								print "delete from  ACTIVE_PAIRS where pair = 'BTC_$buy_ticker' \n";
+								$dbh->do("delete from  ACTIVE_PAIRS where pair = 'BTC_$buy_ticker' ");								
+								last;
+							}											
 							$crt_order_number = $decoded_json->{'orderNumber'};
 							print "$current_spike $execute_crt_tstmp BUYING BTC_$buy_ticker ".sprintf("%0.8f",$price)." $buy_ammount $crt_order_number $btc_balance \n";
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h  "$current_spike $execute_crt_tstmp BUYING BTC_$buy_ticker ".sprintf("%0.8f",$price)." $buy_ammount $crt_order_number $btc_balance \n";
 							close $filename_status_h;
-
-							
-							$sleep_interval = $step_wait_selling;
-						}
-						else
-						{
-						$sleep_interval = $step_sampling;
 						}
 					}
 			}
@@ -621,6 +567,15 @@ while (1)
 					#sell with that price and wait for the execution
 					my $latest_price = $crt_price + ( $crt_price * $wining_procent);
 					$decoded_json = $polo_wrapper->sell("BTC_$sell_ticker",$latest_price,$crt_ammount);
+					if ( $decoded_json->{'returnValue'} > 0 )
+					{
+						$decoded_json = $decoded_json->{'returnJson'};
+					}
+					else
+					{
+						#repeat the iteration
+						last;
+					}										
 					$crt_order_number = $decoded_json->{'orderNumber'};
 					# print Dumper $decoded_json;
 					my $btc_after_sell = $latest_price * $crt_ammount;
@@ -629,7 +584,6 @@ while (1)
 					open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 					print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 					close $filename_status_h;					
-					$sleep_interval = $step_wait_execute;
 		    }	
 	case 3 { 
 					print "SELLING $crt_pair\n";
@@ -642,9 +596,17 @@ while (1)
 					$ticker_status =~ s/\S*?\s+\S*?\s+\S*?\s+(\S*?)\s+.*/$1/g;
 					
 					# $decoded_json = $polo_wrapper->get_open_orders($crt_pair);
-					$decoded_json = $polo_wrapper->get_open_orders('all');					
-					# print "ref is ".ref($decoded_json)." \n";
-					# print Dumper $decoded_json;
+					$decoded_json = $polo_wrapper->get_open_orders('all');
+					# print Dumper $decoded_json;					
+					if ( $decoded_json->{'returnValue'} > 0 )
+					{
+						$decoded_json = $decoded_json->{'returnJson'};
+					}
+					else
+					{
+						#repeat the iteration
+						last;
+					}							
 					foreach (@{$decoded_json->{$crt_pair}})
 					{
 						if ( $_->{'orderNumber'} == $crt_order_number )
@@ -657,9 +619,18 @@ while (1)
 					
 					if ( $order_is_not_complete == 0 )
 					{
-						print "Order is completed ! \n";
+						print "Order is completed !  $crt_order_number \n";
 						
 						$decoded_json = $polo_wrapper->get_my_trade_history($crt_pair);
+						if ( $decoded_json->{'returnValue'} > 0 )
+						{
+							$decoded_json = $decoded_json->{'returnJson'};
+						}
+						else
+						{
+							#repeat the iteration
+							last;
+						}								
 						print Dumper $decoded_json;
 						my $total_btc = 0;
 						my $sell_ammount = 0;
@@ -672,7 +643,6 @@ while (1)
 								$sell_ammount += $_->{'amount'};
 							}
 						}						
-						$sleep_interval = $step_wait_execute;
 						print "$current_spike $crt_tstmp SOLD $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$sell_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";						
 						open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 						print $filename_status_h "$current_spike $crt_tstmp SOLD $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$sell_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
@@ -695,17 +665,35 @@ while (1)
 						$delta_procent = $ticker_status - $crt_price;
 						$delta_procent = ( $delta_procent * 100 ) / $crt_price; 
 						}
-						print "$execute_crt_tstmp Order is not completed ! delta is $delta_procent %  $crt_price  $ticker_status \n";	
+						print "$execute_crt_tstmp Order is not completed ! $crt_order_number delta is $delta_procent %  $crt_price  $ticker_status \n";	
 						if ( $delta_procent < $delta_procent_force_sell )						
 						{
 							# Cancel sell order
 							print "loosing procent higher then $delta_procent_force_sell we need to force a selll $delta_procent ! \n";
 							print "Cancel order $crt_order_number \n";
 							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
-							sleep(20);
+							if ( $decoded_json->{'returnValue'} > 0 )
+							{
+								$decoded_json = $decoded_json->{'returnJson'};
+							}
+							else
+							{
+								#repeat the iteration
+								last;
+							}										
+
 							# FORCE a sell							
 							my $latest_price = $ticker_status + 0.00000001;
 							$decoded_json = $polo_wrapper->sell("BTC_$sell_ticker",$latest_price,$crt_ammount);
+							if ( $decoded_json->{'returnValue'} > 0 )
+							{
+								$decoded_json = $decoded_json->{'returnJson'};
+							}
+							else
+							{
+								#repeat the iteration
+								last;
+							}									
 							$crt_order_number = $decoded_json->{'orderNumber'};
 							# print Dumper $decoded_json;
 							my $btc_after_sell = $latest_price * $crt_ammount;
@@ -714,17 +702,7 @@ while (1)
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 							close $filename_status_h;							
-							
-							#wait for the force sell to get executed
-							# sleep(50);
-							# print "delete from  ACTIVE_PAIRS where pair = '$crt_pair' \n";
-							# $dbh->do("delete from  ACTIVE_PAIRS where pair = '$crt_pair' ");
-							
-							# # cancel the force sell because it will be recreated on the next iteration
-							# $polo_wrapper->cancel_order($crt_pair,$crt_order_number);
-							# sleep(20);	
 						}
-						$sleep_interval = $step_wait_sell_execute;							
 					}					
 			}
 	case 4 { 
@@ -733,7 +711,7 @@ while (1)
 					open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 					print $filename_status_h "$current_spike $crt_tstmp BUYING $crt_pair 0 0 0 $btc_balance \n";
 					close $filename_status_h;				
-					$sleep_interval = $step_sampling;
+
 			}	
 	else { print "State is not recognised ! \n"; } 
 	}
@@ -743,12 +721,6 @@ while (1)
 # Disconnect from the database.
 $dbh->disconnect();
 	
-# print " the minimum is  $hashref_temp->{'percentChange'} $hashref_temp->{'name'} \n";
-
-# $decoded_json=get_json("https://poloniex.com/tradingApi ");
-# print Dumper $decoded_json;
-
-
 
 sub trim {
 	my $input = shift;
@@ -866,7 +838,6 @@ sub get_state_machine {
 sub get_pair_list {
 	my %current_list;
 	my $tstmp = timestamp();
-	# $decoded_json=get_json("https://api.nicehash.com/api?method=orders.set.price&id=$apiid&key=$apikey&location=0&algo=$algo&order=$local_specific_order->{'id'}&price=$increase_price");
 	$decoded_json=get_json("https://poloniex.com/public?command=returnTicker");
 	# print Dumper $decoded_json;
 
@@ -1026,15 +997,6 @@ sub get_isFrozen
 	}
 }
 
-
-sub db2tstmp()
-{
-	my $data = shift;
-	
-	$data =~ s/ /_/g;
-	return $data;
-}
-
 sub get_samples()
 {
 	my $ticker = shift;
@@ -1058,7 +1020,7 @@ sub get_samples()
 		while (my $ref = $sth->fetchrow_hashref()) {
 			# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
 			my $temp_tstmp =  $ref->{'tstmp'};
-			# $temp_tstmp = db2tstmp($temp_tstmp);
+
 			$temp_tstmp =~ s/ /_/g;
 			$temp_tstmp =~ s/:/-/g;
 			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
@@ -1109,7 +1071,6 @@ sub update_samples()
 	while (my $ref = $sth->fetchrow_hashref()) {
 		# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
 		my $temp_tstmp =  $ref->{'tstmp'};
-		# $temp_tstmp = db2tstmp($temp_tstmp);
 		$temp_tstmp =~ s/ /_/g;
 		$temp_tstmp =~ s/:/-/g;		
 		$found = 1;
@@ -1203,6 +1164,11 @@ sub calculate_average()
 				}			
 				
 				#average 
+				if ($array_size == $max_average_size)
+				{
+					#just let update samples gather more data
+					return;
+				}		
 				$sum = $sum / (($array_size - $max_average_size));
 				
 				push @{$output_hash->{$ticker}} , $sum;	
@@ -1226,6 +1192,11 @@ sub calculate_average()
 			}			
 			
 			#average 
+			if ($array_size == $max_average_size)
+			{
+				#just let update samples gather more data
+				return;
+			}				
 			$sum = $sum / ($array_size - $max_average_size);
 			
 			push @{$output_hash->{$ticker}} , $sum;	
@@ -1249,6 +1220,11 @@ sub calculate_average()
 		}			
 		
 		#average 
+		if ($array_size == $max_average_size)
+		{
+			#just let update samples gather more data
+			return;
+		}			
 		$sum = $sum / ($array_size - $max_average_size);
 		
 		push @{$output_hash->{$ticker}} , $sum;	
@@ -1297,98 +1273,5 @@ sub print_number()
 	return sprintf("%0.8f",$number);
 }
 
-sub get_samples_days()
-{
-	my $ticker = shift;
-	my $delta = shift;
-	my $sample_tstmpTime = shift;
-	my $output_hash = shift;
-	my $found_tstmp = 0;
-	my $sample_tstmp = 0;
-	my $minim_TfTime = 0;
-	my $minim_sample_tstmp = 0;
-	
-	if ( defined $output_hash->{$ticker} )
-	{
-	#clear the array
-	@{$output_hash->{$ticker}}=(); 
-	}
-
-	do
-	{
-		$found_tstmp = 0;	
-		$sample_tstmp = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');
-		# search only between the end of the TF and 60 seconds before
-		$minim_TfTime = $sample_tstmpTime - 21600;
-		$minim_sample_tstmp = $minim_TfTime->strftime('%Y-%m-%d_%H-%M-%S');
-		# print "select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1 \n";
-		$sth = $dbh->prepare("select * from $ticker where tstmp < '$sample_tstmp' and tstmp > '$minim_sample_tstmp' order by tstmp desc limit 1");
-		$sth->execute();
-		while (my $ref = $sth->fetchrow_hashref()) {
-			# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
-			my $temp_tstmp =  $ref->{'tstmp'};
-			# $temp_tstmp = db2tstmp($temp_tstmp);
-			$temp_tstmp =~ s/ /_/g;
-			$temp_tstmp =~ s/:/-/g;
-
-			push @{$output_hash->{$ticker}} ,"$temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} ";
-			my $array_size = @{$output_hash->{$ticker}};
-			if ( $array_size > 20 )
-			{
-				# we have read enough
-				$found_tstmp = 0;				
-				last;
-			}
-			else
-			{
-				#read more
-				$found_tstmp = 1;
-			}
-
-		}
-		$sth->finish();				
-		$sample_tstmpTime	= $sample_tstmpTime - ($delta*43200);
-	
-	
-	} while ($found_tstmp == 1)
-}
 
 
-sub long_trend()
-{
-	my $key = shift;
-	my $sample_tstmpTime = shift;
-	my @trend_array = ();
-	
-	for (my $i = 0 ; $i < 2; $i++ )
-	{
-		$sample_tstmpTime = $sample_tstmpTime - 60*60*24*1;
-		my $tstmp_to_compare = $sample_tstmpTime->strftime('%Y-%m-%d_%H-%M-%S');	
-		# print "$key long trend $tstmp_to_compare \n";
-		$sth = $dbh->prepare("select * from $key where tstmp < '$tstmp_to_compare' order by tstmp desc limit 1");
-		$sth->execute();
-		while (my $ref = $sth->fetchrow_hashref()) {
-			# print "$ticker $ref->{'tstmp'} $ref->{'last'} \n";
-			my $temp_tstmp =  $ref->{'tstmp'};
-			# $temp_tstmp = db2tstmp($temp_tstmp);
-			$temp_tstmp =~ s/ /_/g;
-			$temp_tstmp =~ s/:/-/g;
-			my %elem;
-			$elem{'tstmp'} = $temp_tstmp;
-			$elem{'percentChange'} = $ref->{'percentChange'};
-			$elem{'low24hr'} = $ref->{'low24hr'};
-			$elem{'last'} = $ref->{'last'};
-			$elem{'high24hr'} = $ref->{'high24hr'};
-			$elem{'lowestAsk'} = $ref->{'lowestAsk'};
-			$elem{'quoteVolume'} = $ref->{'quoteVolume'};
-			$elem{'baseVolume'} = $ref->{'baseVolume'};
-			$elem{'id'} = $ref->{'id'};
-			$elem{'highestBid'} = $ref->{'highestBid'};
-			$elem{'isFrozen'} = $ref->{'isFrozen'};		
-			push @trend_array , \%elem;
-			# print "$key $temp_tstmp $ref->{'percentChange'} $ref->{'low24hr'} $ref->{'last'} $ref->{'high24hr'} $ref->{'lowestAsk'} $ref->{'quoteVolume'} $ref->{'baseVolume'} $ref->{'id'} $ref->{'highestBid'} $ref->{'isFrozen'} \n";
-		}
-		$sth->finish();	
-	}
-	return \@trend_array;
-}

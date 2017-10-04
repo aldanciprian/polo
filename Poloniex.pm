@@ -1,4 +1,4 @@
-package Poloniex;
+package Poloniex_new;
 use Time::HiRes qw(time);
 use POSIX qw(strftime);
 use PHP::HTTPBuildQuery qw(http_build_query);
@@ -43,6 +43,7 @@ sub new {
 sub query {
  my $self = shift;
  my %req = %{$_[0]};
+ my %retHash;
 	
  # sleep 250 miliseconds
  # select(undef, undef, undef, 0.25);
@@ -91,17 +92,43 @@ sub query {
 				print "A logical error happened: $dec->{'error'}\n";
 				if ( $dec->{'error'} eq "Order not found, or you are not the person who placed it." )
 				{
-					return 1;
+					# get open  trades return this
+					$retHash{'returnValue'} = 1;
+					$retHash{'returnJson'} = "";
 				}
-				return 0;
+				else
+				{
+					$retHash{'returnValue'} = 0;
+					$retHash{'returnJson'} = "";
+				}
+			}
+			else
+			{
+				$retHash{'returnValue'} = 2;
+				$retHash{'returnJson'} = \%{  $dec  };		
 			}
 		}
-   if (ref($dec) eq "HASH") { return \%{  $dec  }; } else { return  \@{  $dec  }; }
-  } else { return 0; }
+		else 
+		{ 
+			$retHash{'returnValue'} = 3;
+			$retHash{'returnJson'} = \@{  $dec  };				
+		}
+  } 
+	else 
+	{ 
+		$retHash{'returnValue'} = -1;
+		$retHash{'returnJson'} = "";
+	}
  }
- # Error code, type of error, error message
- die "An error happened: $retcode ".$curl->strerror($retcode)." ".$curl->errbuf."\n";
- return 0;
+ else
+ {
+	 # Error code, type of error, error message
+	 print "An error happened: $retcode ".$curl->strerror($retcode)." ".$curl->errbuf."\n";
+	 $retHash{'returnValue'} = -1;
+	 $retHash{'returnJson'} = ""; 
+ }
+ # print Dumper %retHash;
+ return \%retHash;
 }
 
 sub retrieveJSON {
@@ -161,109 +188,39 @@ sub get_balances() {
 
 sub get_order_trades() { # Returns the order trades
  $self = shift; $orderNumber= shift;
- my $ret = $self->query(
+ return $self->query(
   {
    'command' => 'returnOrderTrades',
 	 'orderNumber' => $orderNumber
   }
  ); 
- 
-	if  ( $ret == 0 )
-	{
-		print "RETRY get_order_trades \n"; 
-		$ret = $self->query(
-		{
-		 'command' => 'returnOrderTrades',
-		 'orderNumber' => $orderNumber
-		}
-  	);		
-		
-		if  ( $ret == 0 )
-		{
-			print "RETRY2 get_order_trades \n"; 
-			$ret = $self->query(
-			{
-			 'command' => 'returnOrderTrades',
-			 'orderNumber' => $orderNumber
-			}
-			);		
-			 if ( $ret == 0 )
-			 {
-					die " get_order_trades twice failed \n";
-			 }		
-		}
-	}
- return $ret;
 }
 
 sub get_open_orders() { # Returns array of open order hashes
  $self = shift; $pair = shift;
- my $ret = $self->query(
+ return $self->query(
   {
    'command' => 'returnOpenOrders',
    'currencyPair' => uc($pair)
   }
  );
- if  ( $ret == 0 )
- {
-  print "RETRY get_open_orders \n";
-	$ret = $self->query(
-		{
-		 'command' => 'returnOpenOrders',
-		 'currencyPair' => uc($pair)
-		}
-	 ); 
-	 if ( $ret == 0 )
-	 {
-			print "RETRY2 get_open_orders \n";
-			$ret = $self->query(
-			{
-			 'command' => 'returnOpenOrders',
-			 'currencyPair' => uc($pair)
-			}
-		 ); 	 
-			 if ( $ret == 0 )
-			 {
-				die " get_open_orders three times failed \n";
-				}
-	 }
- }
- return $ret;
 }
 
 sub get_my_trade_history() {
  $self = shift; $pair = shift;
-  my $ret = $self->query(
+ return $self->query(
   {
    'command' => 'returnTradeHistory',
    'currencyPair' => uc($pair)
   }
  );
- 
-	if  ( $ret == 0 )
-	{
-		print "RETRY get_my_trade_history \n";  
-		$ret = $self->query(
-			{
-			 'command' => 'returnTradeHistory',
-			 'currencyPair' => uc($pair)
-			}
-		 );	
-		
-		 if ( $ret == 0 )
-		 {
-				die " get_my_trade_history twice failed \n";
-		 }		
-	}
- 
- return $ret;
 }
 
 
 sub buy() {
  # print "In buy \n";
  my $self = shift; my $pair = shift; my $rate = shift; my $amount = shift;
- my $ret = $self->query(
+return $self->query(
   {
    'command' => 'buy',
    'currencyPair' => uc($pair),
@@ -271,30 +228,11 @@ sub buy() {
    'amount' => $amount
   }
  );
- 
-	if  ( $ret == 0 )
-	{
-		print "RETRY buy \n"; 
-		$ret = $self->query(
-			{
-			 'command' => 'buy',
-			 'currencyPair' => uc($pair),
-			 'rate' => $rate,
-			 'amount' => $amount
-			}
-		 );		
-	 if ( $ret == 0 )
-	 {
-			die " buy twice failed \n";
-	 }
-	}
- 
- return $ret;
 }
 
 sub sell() {
  $self = shift; my $pair = shift; my $rate = shift; my $amount = shift;
-   my $ret = $self->query(
+  return $self->query(
   {
    'command' => 'sell',
    'currencyPair' => uc($pair),
@@ -302,69 +240,17 @@ sub sell() {
    'amount' => $amount
   }
  );
- 
-	if  ( $ret == 0 )
-	{
-		print "RETRY sell \n"; 
-		
-		$ret = $self->query(
-			{
-			 'command' => 'sell',
-			 'currencyPair' => uc($pair),
-			 'rate' => $rate,
-			 'amount' => $amount
-			}
-		 );		
-		
-		 if ( $ret == 0 )
-		 {
-				die " sell  twice failed \n";
-		 }			
-		
-	}
- 
- return $ret;
 }
 
 sub cancel_order() {
  $self = shift; my $pair = shift; my $order_number = shift;
-  my $ret = $self->query(
+ return $self->query(
   {
    'command' => 'cancelOrder',
    'currencyPair' => uc($pair),
    'orderNumber' => $order_number
   }
  );
- 
-	if  ( $ret == 0 )
-	{
-		print "RETRY cancel_order \n"; 
-		$ret = $self->query(
-			{
-			 'command' => 'cancelOrder',
-			 'currencyPair' => uc($pair),
-			 'orderNumber' => $order_number
-			}
-		 );	
-		 if ( $ret == 0 )
-		 {
-			print "RETRY2 cancel_order \n"; 
-			$ret = $self->query(
-				{
-				 'command' => 'cancelOrder',
-				 'currencyPair' => uc($pair),
-				 'orderNumber' => $order_number
-				}
-			 );	
-
-				 if ( $ret == 0 )
-				 {
-				die " cancel_order twice failed \n";
-				}
-		 }		
-	}
- 
- return $ret;
 }
 
 sub withdraw() {
