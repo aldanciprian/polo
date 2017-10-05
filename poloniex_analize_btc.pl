@@ -42,11 +42,6 @@ sub get_last_btc;
 my @btc_samples_list;
 
 
-#sleep a random of seconds so that is desyncroinsed from other instances
-my @range = ( 1 .. 60 );
-my $random_number = $range[rand(@range)];
-print "$basename Sleep $random_number seconds \n";
-sleep ($random_number);
 
 
 my $database="poloniex";
@@ -106,6 +101,7 @@ while (1)
 	my $end_price = get_last_btc($btc_samples_list[$array_size -1]);		
 	
 	my $max = 0;
+	my $min = 10000;	
 	for (my $i = 0 ;$i < $array_size ; $i++)
 	{
 		if  ( $max < get_last_btc($btc_samples_list[$i]))
@@ -113,14 +109,30 @@ while (1)
 			$max = get_last_btc($btc_samples_list[$i]);
 		}
 	}
-
+	for (my $i = 0 ;$i < $array_size ; $i++)
+	{
+		if  ( $min > get_last_btc($btc_samples_list[$i]))
+		{
+			$min = get_last_btc($btc_samples_list[$i]);
+		}
+	}
+	
 	my $delta = 0;
 	if ( $max > $start_price )
 	{
 		$delta = (($max - $start_price)*100) / $start_price;
+		$delta *= (-1);
+	}
+	else
+	{
+		#the current price is the highest in the window
+		# calculate the diference between the current and the lowest
+		# print "$start_price $min \n";
+		$delta = (( $start_price - $min ) *100) / $min;
 	}
 	
-	print "$array_size $start_tstmp - $end_tstmp   -----  $start_price - $end_price - delta [-".print_number($delta)."%]\n";
+	my $delta_tstmp  = $crtTime - $oldest_sampleTime;
+	print "$array_size $start_tstmp - $end_tstmp  [".$delta_tstmp->pretty."] -----  $start_price - $end_price  - $max - $min - delta [".print_number($delta)."%]\n";
 	
 	sleep $sleep_interval;
 }
