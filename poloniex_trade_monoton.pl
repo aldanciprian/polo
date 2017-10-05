@@ -32,11 +32,11 @@ my $crt_tstmp = 0; # the tstmp of the current order
 my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
-my $btc_balance = 0.00011; # the ammount in BTC
-my $delta_procent_force_sell = -9; # the procent where we force the sell
+my $btc_balance = 0.0002; # the ammount in BTC
+my $delta_procent_force_sell = -10; # the procent where we force the sell
 my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
 my $max_dev_size = 3.3; # the maximum procent of deviation of the current price to the middle of the average
-my $wining_procent = 0.012; # the procent where we sell - case 2
+my $wining_procent = 0.013; # the procent where we sell - case 2
 
 
 my $basename = basename($0,".pl");
@@ -117,7 +117,7 @@ $sth->execute();
 while (my $ref = $sth->fetchrow_hashref()) {
 	# print Dumper $ref;
 	# print "Found a row: id = $ref->{'Tables_in_poloniex'}\n";
-	if ( $ref->{'Tables_in_poloniex'} ne "ACTIVE_PAIRS" )
+	if ( ( $ref->{'Tables_in_poloniex'} ne "ACTIVE_PAIRS" ) and ( $ref->{'Tables_in_poloniex'} ne "BTCUSD" ) )
 	{
 	push @symbols_list , $ref->{'Tables_in_poloniex'};	
 	}
@@ -155,7 +155,7 @@ while (1)
 	my $buy_next = "WRONG";
 	my $execute_crt_tstmp = timestamp();
 
-	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$  $crt_iteration ======================\n";		
+	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$  $crt_iteration  $max_average_deviation% $max_dev_size%======================\n";		
 	$crt_iteration++;
 
 	
@@ -272,7 +272,7 @@ while (1)
 				} #if sample size is enough
 				else
 				{
-					print "Not enough samples for $key $max_sample_size \n";
+					print "Not enough samples for $key $size $max_sample_size \n";
 				}
 			} #if defined generic list
 		} #if update added a new element
@@ -325,25 +325,25 @@ while (1)
 				print "This ticker is allready active $max_dev_elem{'ticker'} $max_dev_elem{'deviation'} %\n";
 			}
 		}
-		 { #print the average list
-			 my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
-			 my $sum  = 0;
-			 print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[0])." ";				 
-			 $sum += $average_delta_generic_list{$max_dev_elem{'ticker'}}[0];					 
-			 for (my $i = 1; $i < $average_size; $i++) 
-			 {
-				$sum += $average_delta_generic_list{$max_dev_elem{'ticker'}}[$i];
-				print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
-				use integer;
-				if ( ( $i % 10 ) == 0 )
-				 {
-					 print "\n";
-				 }
-			 }
-			 print "\n";
-			 print "Price ".get_last($delta_generic_list{$max_dev_elem{'ticker'}}[0])." \n";
-			 print "Sum is ".print_number( ($sum / $average_size) )." \n";
-		 }
+		 # { #print the average list
+			 # my $average_size = @{$average_delta_generic_list{$max_dev_elem{'ticker'}}};			
+			 # my $sum  = 0;
+			 # print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[0])." ";				 
+			 # $sum += $average_delta_generic_list{$max_dev_elem{'ticker'}}[0];					 
+			 # for (my $i = 1; $i < $average_size; $i++) 
+			 # {
+				# $sum += $average_delta_generic_list{$max_dev_elem{'ticker'}}[$i];
+				# print print_number($average_delta_generic_list{$max_dev_elem{'ticker'}}[$i])." ";
+				# use integer;
+				# if ( ( $i % 10 ) == 0 )
+				 # {
+					 # print "\n";
+				 # }
+			 # }
+			 # print "\n";
+			 # print "Price ".get_last($delta_generic_list{$max_dev_elem{'ticker'}}[0])." \n";
+			 # print "Sum is ".print_number( ($sum / $average_size) )." \n";
+		 # }
 	}
 
 	
