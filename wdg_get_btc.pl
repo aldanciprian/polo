@@ -13,7 +13,7 @@ sub timestamp;
 sleep(60);
 while (1)
 {
-	my $filename = 'poloniex_get_btc_wdg_get_btc.txt';
+	my $filename = 'poloniex_get_btc_wdg.txt';
 	open(my $fh, '<', $filename) or die "Could not open file '$filename' $!";
 	my $last_line;
 	$last_line = $_,while (<$fh>);

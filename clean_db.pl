@@ -29,7 +29,7 @@ $sth->execute();
 while (my $ref = $sth->fetchrow_hashref()) {
 	# print Dumper $ref;
 	# print "Found a row: id = $ref->{'Tables_in_poloniex'}\n";
-	if ( $ref->{'Tables_in_poloniex'} ne "ACTIVE_PAIRS" )
+	if ( ( $ref->{'Tables_in_poloniex'} ne "ACTIVE_PAIRS" ) and ( $ref->{'Tables_in_poloniex'} ne "ACTIVE_PAIRS_HIGH_RISK" ) and ( $ref->{'Tables_in_poloniex'} ne "CONTROL_TABLE" ) )
 	{
 		push @symbols_list , $ref->{'Tables_in_poloniex'};
 	}

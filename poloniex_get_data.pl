@@ -103,7 +103,7 @@ while (1)
 	my $execute_crt_tstmp = timestamp();
 	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";	
 	# watchdog
-	my $filename_wdg = 'wdg_get_data.txt';
+	my $filename_wdg = basename($0,".pl")."_wdg.txt";
 	open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
 	print $fh_wdg "$execute_crt_tstmp\n";
 	close $fh_wdg;	

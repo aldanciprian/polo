@@ -49,7 +49,7 @@ while (1)
 	my $execute_crt_tstmp = timestamp();
 	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";	
 	# watchdog
-	my $filename_wdg = $Basename."_wdg_get_btc.txt";
+	my $filename_wdg = $Basename."_wdg.txt";
 	open(my $fh_wdg, '>', $filename_wdg) or die "Could not open file '$filename_wdg' $!";
 	print $fh_wdg "$execute_crt_tstmp\n";
 	close $fh_wdg;	

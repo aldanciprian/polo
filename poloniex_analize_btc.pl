@@ -56,6 +56,9 @@ my $dbh = DBI->connect("DBI:mysql:database=$database;host=$hostname","ciprian", 
 # now retrieve data from the table.
 my $sth;
 
+#create the control table
+$dbh->do("CREATE TABLE IF NOT EXISTS CONTROL_TABLE (tstmp TIMESTAMP)");
+
 
 # watchdog
 my $filename_wdg = basename($0,".pl")."_wdg.txt";
@@ -133,6 +136,30 @@ while (1)
 	
 	my $delta_tstmp  = $crtTime - $oldest_sampleTime;
 	print "$array_size $start_tstmp - $end_tstmp  [".$delta_tstmp->pretty."] -----  $start_price - $end_price  - $max - $min - delta [".print_number($delta)."%]\n";
+	
+	if ( $delta > 0 )
+	{
+		if ( $delta > 2 )
+		{
+			print "Don't trade, delta $delta higher then 2% \n";
+			
+			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";
+			$dbh->do("DELETE FROM CONTROL_TABLE");
+			
+			#don't trade when there is a positive raise more then 2 procent
+			$dbh->do("INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp')");
+		}
+	}
+	else
+	{
+		if ( $delta < -1 )
+		{
+			print "Don't trade, delta $delta lower then -1% \n";
+			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";
+			$dbh->do("DELETE FROM CONTROL_TABLE");			
+			$dbh->do("INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') ");
+		}
+	}
 	
 	sleep $sleep_interval;
 }
