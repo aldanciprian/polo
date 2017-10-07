@@ -134,12 +134,17 @@ while (1)
 		$delta = (( $start_price - $min ) *100) / $min;
 	}
 	
+	open(my $filename_status_h, '>', $filename_status) or die "Could not open file '$filename_status' $!";
+
+
 	my $delta_tstmp  = $crtTime - $oldest_sampleTime;
 	print "$array_size $start_tstmp - $end_tstmp  [".$delta_tstmp->pretty."] -----  $start_price - $end_price  - $max - $min - delta [".print_number($delta)."%]\n";
+	print $filename_status_h "$array_size $start_tstmp - $end_tstmp  [".$delta_tstmp->pretty."] -----  $start_price - $end_price  - $max - $min - delta [".print_number($delta)."%]\n";
 	
+	close $filename_status_h;		
 	if ( $delta > 0 )
 	{
-		if ( $delta > 2 )
+		if ( $delta > 4 )
 		{
 			print "Don't trade, delta $delta higher then 2% \n";
 			
@@ -152,7 +157,7 @@ while (1)
 	}
 	else
 	{
-		if ( $delta < -1 )
+		if ( $delta < -1.7 )
 		{
 			print "Don't trade, delta $delta lower then -1% \n";
 			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";
