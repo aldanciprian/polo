@@ -203,13 +203,14 @@ sub get_pair_list {
 			my $highestBid   = ${decoded_json}->{$_}->{'highestBid'};
 			my $isFrozen   = ${decoded_json}->{$_}->{'isFrozen'};		
 
+			# print "$tstmp $coinName $percentChange $low24hr $last $high24hr $lowestAsk $quoteVolume $baseVolume $id $highestBid $isFrozen \n";			
 			if ( $isFrozen == 0 )
 			{
 				#only unfrozen pairs					
 				# if ( $baseVolume > $volumeRef)
 				{
 					# only higher then a threshold
-					if ( $last > 0.00001000 )
+					if ( $last > 0.00000500 )
 					{
 
 						# push @elem $tstmp;

@@ -647,7 +647,7 @@ while (1)
 					my $order_is_not_complete = 0;
 					$sell_ticker =~ s/BTC_(.*)/$1/g ;
 					my %current_list = 	get_pair_list();
-					print Dumper $current_list{$sell_ticker};
+					# print Dumper $current_list{$sell_ticker};
 					my $ticker_status = $current_list{$sell_ticker};
 					$ticker_status =~ s/\S*?\s+\S*?\s+\S*?\s+(\S*?)\s+.*/$1/g;
 					
