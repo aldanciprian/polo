@@ -651,6 +651,13 @@ while (1)
 					my $ticker_status = $current_list{$sell_ticker};
 					$ticker_status =~ s/\S*?\s+\S*?\s+\S*?\s+(\S*?)\s+.*/$1/g;
 					
+					if ( $ticker_status eq "" )
+					{
+						print "We couldn't find the ticker.Is something wrong with this pair! \n";
+						last;
+					}
+					
+					
 					# $decoded_json = $polo_wrapper->get_open_orders($crt_pair);
 					$decoded_json = $polo_wrapper->get_open_orders('all');
 					# print Dumper $decoded_json;					
