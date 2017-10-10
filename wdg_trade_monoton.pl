@@ -10,7 +10,7 @@ use File::Basename;
 my $sleep_intv = 10;
 
 sub timestamp;
-sleep(60);
+sleep(80);
 while (1)
 {
 	my $filename = 'poloniex_trade_monoton_wdg.txt';

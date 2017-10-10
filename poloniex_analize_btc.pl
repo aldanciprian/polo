@@ -144,7 +144,7 @@ while (1)
 	close $filename_status_h;		
 	if ( $delta > 0 )
 	{
-		if ( $delta > 4 )
+		if ( $delta > 3 )
 		{
 			print "Don't trade, delta $delta higher then 2% \n";
 			

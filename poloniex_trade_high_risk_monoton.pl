@@ -36,7 +36,7 @@ my $current_spike = 0; # the current number of buy/sell
 my $btc_balance = 0.001; # the ammount in BTC
 my $delta_procent_force_sell = -50; # the procent where we force the sell
 my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
-my $max_dev_size = 2.5; # the maximum procent of deviation of the current price to the middle of the average
+my $max_dev_size = 2.8; # the maximum procent of deviation of the current price to the middle of the average
 my $wining_procent = 0.013; # the procent where we sell - case 2
 
 
@@ -156,7 +156,7 @@ while (1)
 	my $buy_next = "WRONG";
 	my $execute_crt_tstmp = timestamp();
 
-	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$  $crt_iteration  $max_average_deviation% $max_dev_size% $active_table======================\n";		
+	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$  $crt_iteration  $max_average_deviation% $max_dev_size% $active_table $btc_balance======================\n";		
 	$crt_iteration++;
 
 	# read from CONTROL_TABLE
@@ -538,11 +538,28 @@ while (1)
 						if ( "BTC_$buy_ticker" eq $crt_pair )
 						{
 							print "The last cycle was with $crt_pair , and the new one cannot be BTC_$buy_ticker.Wait for the next! \n";
-							last;
+							#last;
 						}						
 						if ( $buy_ticker ne "WRONG" )
 						{
 							print "buy now \n";
+							{
+							my $found = 0;
+							$sth = $dbh->prepare("select * from $active_table where pair = '$Basename'");
+							$sth->execute();
+							while (my $ref = $sth->fetchrow_hashref()) {
+								$found = 1;
+							}
+							$sth->finish();								
+						
+							if ( $found == 1 )
+							{
+								print "We found baseanme in active table ,we will delete it\n";
+								print "delete from  $active_table where pair = '$Basename' \n";
+								$dbh->do("delete from  $active_table where pair = '$Basename' ");
+							}							
+							}							
+							
 							print "INSERT INTO $active_table (pair) VALUES ('BTC_$buy_ticker') \n";
 							$dbh->do("INSERT INTO $active_table (pair) VALUES ('BTC_$buy_ticker')");
 							
@@ -692,7 +709,30 @@ while (1)
 					else
 					{
 						my $delta_procent = 0;
-						# my $bought_price = $crt_price - (
+						
+						#if the last time when we started seelling is longer then 2 hours remove the symbol
+						#from active table
+						my $startSellingTime = Time::Piece->strptime($crt_tstmp,'%Y-%m-%d_%H-%M-%S');	
+						if ( ( $crtTime - $startSellingTime ) > (2*60*60) )
+						{
+							my $found = 0;
+							$sth = $dbh->prepare("select * from $active_table where pair = '$Basename'");
+							$sth->execute();
+							while (my $ref = $sth->fetchrow_hashref()) {
+								$found = 1;
+							}
+							$sth->finish();								
+						
+							if ( $found == 0 )
+							{
+								print "The start Selling time was  more then 2 hours ago";
+								print "delete from  $active_table where pair = '$crt_pair' \n";
+								$dbh->do("delete from  $active_table where pair = '$crt_pair' ");
+								print "INSERT INTO $active_table (pair) VALUES ('$Basename') \n";
+								$dbh->do("INSERT INTO $active_table (pair) VALUES ('$Basename')");
+							}
+						}						
+						
 						if  ( $crt_price > $ticker_status )
 						{
 						$delta_procent = $crt_price - $ticker_status;
