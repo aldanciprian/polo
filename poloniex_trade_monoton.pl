@@ -36,7 +36,7 @@ my $current_spike = 0; # the current number of buy/sell
 my $btc_balance = 0.007; # the ammount in BTC
 my $delta_procent_force_sell = -40; # the procent where we force the sell
 my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
-my $max_dev_size = 4.5; # the maximum procent of deviation of the current price to the middle of the average
+my $max_dev_size = 4.1; # the maximum procent of deviation of the current price to the middle of the average
 my $wining_procent = 0.016; # the procent where we sell - case 2
 
 
