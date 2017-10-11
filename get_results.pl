@@ -100,13 +100,20 @@ foreach (@files)
 			}	
 		if ( $previous_state eq "SOLD" )
 		{
-		#print "$current_spike $crt_tstmp $previous_state $btc_balance\n";		
-		$sold_line = "$current_spike $crt_tstmp $previous_state $btc_balance";
+		# print "$current_spike $crt_tstmp $previous_state $btc_balance\n";		
+		# $sold_line = "$current_spike $crt_tstmp $previous_state $btc_balance";
+		$sold_line = $last_line;
 		}
 	}
+	my $last_balance = 0;	
+	if ( $sold_line =~ /\s*?(\S*?)\s+(\S*?)\s+(\S*?)\s+(\S*?)\s+(\S*?)\s+(\S*?)\s+(\S*?)\s+(\S*?)\s/ )
+	{
+		$last_balance = $8;
+	}
 
-	$total_btc += $btc_balance;
-	print "$file $last_real_line\n";	
+	print "SOLD LINE $file $sold_line \n";
+	$total_btc += $last_balance;
+	# print "$file $last_real_line\n";	
 	close $filename_status_h;
 }
 

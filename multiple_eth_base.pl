@@ -36,6 +36,149 @@ my $sign = $ENV{'POLONIEX_SIGN'};
 
 my $sleep_interval = 10;
 
+while (1)
+{
+
+	my $execute_crt_tstmp = timestamp();
+	print "============================= ".basename($0,".pl")." $execute_crt_tstmp  $$ ======================\n";	
+	
+
+# print "POLONIEX \n";
+my %poloniex_tickers;
+$decoded_json=get_json("https://poloniex.com/public?command=returnTicker");
+foreach (keys %{$decoded_json})
+{
+	my $key = $_;
+	if ( $key =~ m/ETH_.*/ )
+	{
+		if ( $decoded_json->{$key}->{'isFrozen'} == 0 )
+		{
+			# print $key." $decoded_json->{$key}->{'last'} \n";			
+			$poloniex_tickers{$key} = $decoded_json->{$key}->{'last'};
+		}
+	}
+}
+
+# print "BITFINEX \n";
+my $tickers = "";
+$decoded_json=get_json("https://api.bitfinex.com/v1/symbols");
+foreach (@{$decoded_json})
+{
+	my $key = $_;
+	if ( $key =~ m/.*eth$/ )
+	{
+		my $ticker = "t".uc($key);
+		$tickers .= "$ticker,";
+		# $decoded_json=get_json("https://api.bitfinex.com/v1/pubticker/$key");
+		# print "$key $decoded_json->{'last_price'}\n";
+		# print Dumper $tickers;
+	}
+}
+chop($tickers);
+$decoded_json=get_json("https://api.bitfinex.com/v2/tickers?symbols=$tickers");
+my %bitfinex_tickers;
+foreach (@{$decoded_json})
+{
+	my $key = $_->[0];
+	# print Dumper $_;
+	$key =~ s/t//g;
+	if ( $key =~ /(.*)ETH/ )
+	{
+		$key = "ETH_".$1;
+	}
+	# print "$key $_->[9] \n";
+	$bitfinex_tickers{$key} = $_->[7];
+}
+
+
+
+# print "KRAKEN \n";
+$decoded_json=get_json("https://api.kraken.com/0/public/AssetPairs");
+# print Dumper $decoded_json;
+$tickers ="";
+foreach (keys %{$decoded_json->{'result'}})
+{
+	my $key = $_;
+	if ( $key =~ m/.*ETH$/ )
+	{
+		# print "$key \n";
+		$tickers .="$key,";
+	}
+}
+chop($tickers);
+$decoded_json=get_json("https://api.kraken.com/0/public/Ticker?pair=$tickers");
+my %kraken_tickers;
+# print Dumper $decoded_json;
+foreach (keys %{$decoded_json->{'result'}})
+{
+	my $key =  $_;
+	my $temp_key =  $key;
+	$key =~ s/^X//g;
+	$key =~ s/XETH/ETH/g;
+	if ( $key =~ /(.*)ETH/ )
+	{
+		$key = "ETH_".$1;
+	}
+	
+	# print "$key $decoded_json->{'result'}->{$temp_key}->{'c'}->[0] \n";
+	$kraken_tickers{$key} = $decoded_json->{'result'}->{$temp_key}->{'c'}->[0] ;
+}
+
+print "INTERSECTIONS \n\n";
+foreach ( sort (keys %poloniex_tickers) )
+{
+	my $key = $_;
+
+	if ( $bitfinex_tickers{$key} )
+	{
+		my $delta = 0;
+		if ( $bitfinex_tickers{$key} > $poloniex_tickers{$key} )
+		{
+			$delta = (( $bitfinex_tickers{$key} - $poloniex_tickers{$key})*100)/$poloniex_tickers{$key};
+		}
+		else
+		{
+			$delta = (( $poloniex_tickers{$key} - $poloniex_tickers{$key})*100)/$bitfinex_tickers{$key};		
+		}
+		print "POLO-BITF $key $poloniex_tickers{$key} $bitfinex_tickers{$key} ".print_number($delta)." %\n";
+	}
+	if ( $kraken_tickers{$key} )
+	{
+		my $delta = 0;
+		if ( $kraken_tickers{$key} > $poloniex_tickers{$key} )
+		{
+			$delta = (( $kraken_tickers{$key} - $poloniex_tickers{$key})*100)/$poloniex_tickers{$key};
+		}
+		else
+		{
+			$delta = (( $poloniex_tickers{$key} - $poloniex_tickers{$key})*100)/$kraken_tickers{$key};		
+		}	
+		print "POLO_KRAK $key $poloniex_tickers{$key} $kraken_tickers{$key} ".print_number($delta)." %\n";
+	}
+}
+foreach ( sort (keys %bitfinex_tickers) )
+{
+	my $key = $_;	
+	if ( $kraken_tickers{$key} )
+	{
+		my $delta = 0;	
+		if ( $kraken_tickers{$key} > $bitfinex_tickers{$key} )
+		{
+			$delta = (( $kraken_tickers{$key} - $bitfinex_tickers{$key})*100)/$bitfinex_tickers{$key};
+		}
+		else
+		{
+			$delta = (( $bitfinex_tickers{$key} - $kraken_tickers{$key})*100)/$kraken_tickers{$key};		
+		}		
+		print "BITF_KRAK $key $bitfinex_tickers{$key} $kraken_tickers{$key} ".print_number($delta)." %\n";
+	}
+	
+}
+
+	sleep $sleep_interval;
+
+}
+exit 0;
 
 my $database="multiple";
 my $hostname="localhost";

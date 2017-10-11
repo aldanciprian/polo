@@ -965,7 +965,7 @@ sub get_pair_list {
 				# if ( $baseVolume > $volumeRef)
 				{
 					# only higher then a threshold
-					if ( $last > 0.00001000 )
+					if ( $last > 0.00000500 )
 					{
 
 						# push @elem $tstmp;
