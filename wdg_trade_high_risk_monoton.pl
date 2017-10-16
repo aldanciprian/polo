@@ -34,7 +34,7 @@ while (1)
 			my $delta = $crtTime - $lastTime;
 			print basename($0,".pl")." [$crt_time] - [$last_line] $delta \n";
 
-			if ( ($crtTime - $lastTime) > 40 )
+			if ( ($crtTime - $lastTime) > 70 )
 			{
 				# the last line written by was 40 sec ago.Its to late
 				# restart the poloniex_trade_high_risk_monoton script

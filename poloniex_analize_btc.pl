@@ -144,7 +144,7 @@ while (1)
 	close $filename_status_h;		
 	if ( $delta > 0 )
 	{
-		if ( $delta > 6 )
+		if ( $delta > 1.5 )
 		{
 			print "Don't trade, delta $delta higher then 2% \n";
 			
@@ -157,7 +157,7 @@ while (1)
 	}
 	else
 	{
-		if ( $delta < -3.7 )
+		if ( $delta < -4 )
 		{
 			print "Don't trade, delta $delta lower then -1% \n";
 			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";

@@ -34,7 +34,7 @@ my $crt_price = 0; # the current price in the order
 my $crt_ammount = 0; # the current ammount in the order
 my $current_spike = 0; # the current number of buy/sell 
 my $btc_balance = 0.001; # the ammount in BTC
-my $delta_procent_force_sell = -50; # the procent where we force the sell
+my $delta_procent_force_sell = -70; # the procent where we force the sell
 my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
 my $max_dev_size = 2.3; # the maximum procent of deviation of the current price to the middle of the average
 my $wining_procent = 0.013; # the procent where we sell - case 2
@@ -54,7 +54,7 @@ my $sleep_interval = 10; # sleep interval in seconds , the default
 
 my $buy_timeout = 0; #if it doesn't buy...cancel the order
 
-
+my $last_status_line = "";
 # BUYING 1
 # BOUGHT 2
 # SELLING 3
@@ -447,6 +447,7 @@ while (1)
 							print "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";						
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
+							$last_status_line = "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";	
 							close $filename_status_h;			
 						}
 						else
@@ -455,7 +456,7 @@ while (1)
 							print "Order is not completed ! $buy_timeout \n";										
 							
 							#after 20 cycles cancel the order
-							if ( $buy_timeout >= 20 )
+							if ( $buy_timeout >= 10 )
 							{
 								# cancel the order and go back to buying
 								print "Timeout on the order cancel the order and go back to buying ! \n";
@@ -486,6 +487,7 @@ while (1)
 												 truncate($filename_status_h,tell($filename_status_h)) or die;
 											}
 									}
+								$last_status_line = "";
 								close $filename_status_h;
 								
 								if ( $decoded_json->{'returnValue'} > 1 )
@@ -507,6 +509,7 @@ while (1)
 									print "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";						
 									open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 									print $filename_status_h "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
+									$last_status_line = "$current_spike $crt_tstmp BOUGHT $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$buy_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
 									close $filename_status_h;	
 								}
 							}
@@ -524,7 +527,7 @@ while (1)
 						{
 							my $delta_oscilation = $crtTime - $tableTime;
 							# don't buy for half an hour
-							if ( $delta_oscilation < (15 * 60) )
+							if ( $delta_oscilation < (45 * 60) )
 							{
 								print "The time between the last big BTC_USD oscilation and present is less then half an hour \n";
 								print "Don't trade now $delta_oscilation sec $crtTime $tableTime\n";
@@ -569,12 +572,12 @@ while (1)
 
 							if ( $price > 0.00001000 )
 							{
-								$price = $price - 0.00000005;								
+								$price = $price + 0.00000002;								
 							}
 							else
 							{
 								# just increase with the small resolution
-								$price = $price - 0.00000001;							
+								$price = $price + 0.00000001;							
 							}
 							if ( $price <= 0 )
 							{
@@ -605,6 +608,7 @@ while (1)
 							print "$current_spike $execute_crt_tstmp BUYING BTC_$buy_ticker ".sprintf("%0.8f",$price)." $buy_ammount $crt_order_number $btc_balance \n";
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h  "$current_spike $execute_crt_tstmp BUYING BTC_$buy_ticker ".sprintf("%0.8f",$price)." $buy_ammount $crt_order_number $btc_balance \n";
+							$last_status_line = "$current_spike $execute_crt_tstmp BUYING BTC_$buy_ticker ".sprintf("%0.8f",$price)." $buy_ammount $crt_order_number $btc_balance \n";
 							close $filename_status_h;
 						}
 					}
@@ -639,6 +643,7 @@ while (1)
 					print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 					open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 					print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+					$last_status_line = "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 					close $filename_status_h;					
 		    }	
 	case 3 { 
@@ -709,6 +714,7 @@ while (1)
 						print "$current_spike $crt_tstmp SOLD $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$sell_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";						
 						open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 						print $filename_status_h "$current_spike $crt_tstmp SOLD $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$sell_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
+						$last_status_line = "$current_spike $crt_tstmp SOLD $crt_pair ".sprintf("%0.8f",$crt_price)." ".sprintf("%0.8f",$sell_ammount)." $crt_order_number ".sprintf("%0.8f",$total_btc)." \n";												
 						close $filename_status_h;	
 						print "delete from  $active_table where pair = '$crt_pair' \n";
 						$dbh->do("delete from  $active_table where pair = '$crt_pair' ");
@@ -757,7 +763,7 @@ while (1)
 							# Cancel sell order
 							print "loosing procent higher then $delta_procent_force_sell we need to force a selll $delta_procent ! \n";
 							print "Cancel order $crt_order_number \n";
-							$polo_wrapper->cancel_order($crt_pair,$crt_order_number);
+							$decoded_json = $polo_wrapper->cancel_order($crt_pair,$crt_order_number);
 							if ( $decoded_json->{'returnValue'} > 0 )
 							{
 								$decoded_json = $decoded_json->{'returnJson'};
@@ -787,6 +793,7 @@ while (1)
 							print "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 							open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 							print $filename_status_h "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
+							$last_status_line = "$current_spike $execute_crt_tstmp SELLING BTC_$sell_ticker ".sprintf("%0.8f",$latest_price)." $crt_ammount $crt_order_number $btc_after_sell \n";
 							close $filename_status_h;							
 						}
 					}					
@@ -796,6 +803,7 @@ while (1)
 					print "$current_spike $crt_tstmp BUYING $crt_pair 0 0 0 $btc_balance \n";
 					open(my $filename_status_h, '>>', $filename_status) or warn "Could not open file '$filename_status' $!";
 					print $filename_status_h "$current_spike $crt_tstmp BUYING $crt_pair 0 0 0 $btc_balance \n";
+					$last_status_line = "$current_spike $crt_tstmp BUYING $crt_pair 0 0 0 $btc_balance \n";
 					close $filename_status_h;				
 
 			}	
@@ -857,15 +865,23 @@ sub get_state_machine {
 			close $fc;
 	}
 	my $last_line="";	
-	if ( -s $filename_status )
+	if ( $last_status_line eq "")
 	{
-		open(my $filename_status_h, '<', $filename_status) or warn "Could not open file '$filename_status' $!";
-		$last_line = $_,while (<$filename_status_h>);
-		close $filename_status_h;
-		chomp($last_line);
-	}	
+		if ( -s $filename_status )
+		{
+			open(my $filename_status_h, '<', $filename_status) or warn "Could not open file '$filename_status' $!";
+			$last_line = $_,while (<$filename_status_h>);
+			close $filename_status_h;
+			chomp($last_line);
+			$last_status_line = $last_line;
+		}	
+	}
+	else
+	{
+		chomp($last_status_line);	
+	}
 	
-	
+	$last_line = $last_status_line;
 	if ( $last_line =~ /^$/ )
 	{
 		print "$filename_status is empty !!\n";
