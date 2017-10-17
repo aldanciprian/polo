@@ -36,7 +36,7 @@ my $current_spike = 0; # the current number of buy/sell
 my $btc_balance = 0.001; # the ammount in BTC
 my $delta_procent_force_sell = -70; # the procent where we force the sell
 my $max_average_deviation = 1.8; # the procent of maximum average deviation that we allow
-my $max_dev_size = 2.3; # the maximum procent of deviation of the current price to the middle of the average
+my $max_dev_size = 2.8; # the maximum procent of deviation of the current price to the middle of the average
 my $wining_procent = 0.013; # the procent where we sell - case 2
 
 
@@ -527,7 +527,7 @@ while (1)
 						{
 							my $delta_oscilation = $crtTime - $tableTime;
 							# don't buy for half an hour
-							if ( $delta_oscilation < (45 * 60) )
+							if ( $delta_oscilation < (10 * 60) )
 							{
 								print "The time between the last big BTC_USD oscilation and present is less then half an hour \n";
 								print "Don't trade now $delta_oscilation sec $crtTime $tableTime\n";

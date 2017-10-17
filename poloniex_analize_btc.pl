@@ -144,9 +144,9 @@ while (1)
 	close $filename_status_h;		
 	if ( $delta > 0 )
 	{
-		if ( $delta > 1.5 )
+		if ( $delta > 0.1 )
 		{
-			print "Don't trade, delta $delta higher then 2% \n";
+			print "Don't trade, delta $delta higher then 0.1% \n";
 			
 			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";
 			$dbh->do("DELETE FROM CONTROL_TABLE");
@@ -157,9 +157,16 @@ while (1)
 	}
 	else
 	{
-		if ( $delta < -4 )
+		if ( $delta > -0.2 )
 		{
-			print "Don't trade, delta $delta lower then -1% \n";
+			print "Don't trade, delta $delta higher then -0.2% \n";
+			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";
+			$dbh->do("DELETE FROM CONTROL_TABLE");			
+			$dbh->do("INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') ");
+		}
+		if ( $delta < -5 )
+		{
+			print "Don't trade, delta $delta lower  then -5% \n";
 			print "INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') \n";
 			$dbh->do("DELETE FROM CONTROL_TABLE");			
 			$dbh->do("INSERT INTO CONTROL_TABLE (tstmp) VALUES ('$execute_crt_tstmp') ");
